@@ -28,6 +28,11 @@ class ChatResponse(BaseModel):
     trace: list[dict]
 
 
+class RagSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    top_k: int = Field(default=4, ge=1, le=10)
+
+
 class IntentResult(BaseModel):
     intent: IntentLiteral
     confidence: float

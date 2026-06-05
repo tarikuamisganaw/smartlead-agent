@@ -5,8 +5,25 @@ from app.workflow.state import AgentState
 
 
 PRICING_KEYWORDS = ("price", "pricing", "cost", "how much")
-LEAD_KEYWORDS = ("seo", "website", "ads", "marketing", "automation", "need help", "my budget")
-DISCOUNT_KEYWORDS = ("discount", "refund", "guarantee", "promise results")
+LEAD_KEYWORDS = (
+    "seo",
+    "website",
+    "ads",
+    "marketing",
+    "automation",
+    "lead generation",
+    "need help",
+    "my budget",
+)
+DISCOUNT_KEYWORDS = (
+    "discount",
+    "refund",
+    "guarantee",
+    "promise results",
+    "can you guarantee",
+    "70% off",
+    "free service",
+)
 SUPPORT_KEYWORDS = ("support", "problem", "issue", "broken")
 
 
@@ -76,7 +93,11 @@ def mock_extract_lead_info(message: str) -> LeadInfo:
     lowered = message.lower()
     email_match = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", message)
     phone_match = re.search(r"(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}", message)
-    name_match = re.search(r"\b(?:my name is|i am|i'm)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)", message)
+    name_match = re.search(
+        r"\b(?:my name is|i am|i'm)\s+([A-Za-z]+(?:\s+(?!and\b)[A-Za-z]+)?)(?=\s+and\b|,|\.|$)",
+        message,
+        flags=re.IGNORECASE,
+    )
 
     budget = _extract_budget(message)
     service_interest = _extract_service_interest(lowered)
@@ -90,7 +111,7 @@ def mock_extract_lead_info(message: str) -> LeadInfo:
         missing_fields.append("email")
 
     return LeadInfo(
-        name=name_match.group(1) if name_match else None,
+        name=_normalize_name(name_match.group(1)) if name_match else None,
         email=email_match.group(0) if email_match else None,
         phone=phone_match.group(0) if phone_match else None,
         business_type=business_type,
@@ -105,18 +126,18 @@ def mock_generate_final_response(state: AgentState) -> FinalResponse:
     intent = state.get("intent") or "unknown"
     lead_info = state.get("lead_info") or {}
     missing_fields = state.get("missing_lead_fields") or []
+    docs = state.get("retrieved_docs") or []
 
     if intent == "pricing_question":
-        message = (
-            "Our mock Week 1 pricing answer: SEO starts around $1,500/month, website design starts around "
-            "$2,000, paid ads setup starts around $800, and AI automation setup starts around $1,200. "
-            "In Week 2 this answer will be grounded in retrieved docs."
-        )
+        message = _pricing_response_from_docs(docs)
         return FinalResponse(message=message, next_step="Share the service and budget so we can qualify the lead.")
 
     if intent == "lead_inquiry":
         service = lead_info.get("service_interest") or "the right service"
         message = f"Yes, we can help with {service}. "
+        pricing_hint = _pricing_hint_for_service(service, docs)
+        if pricing_hint:
+            message += f"{pricing_hint} "
         if missing_fields:
             missing = " and ".join(missing_fields)
             message += f"To route this properly, please share your {missing}."
@@ -126,7 +147,7 @@ def mock_generate_final_response(state: AgentState) -> FinalResponse:
 
     if intent == "discount_request":
         return FinalResponse(
-            message="Special pricing, refunds, guarantees, and promised-results requests need team review before approval.",
+            message="That request needs review by the team. I can collect your details and have someone follow up.",
             next_step="Create a human approval request.",
         )
 
@@ -137,9 +158,15 @@ def mock_generate_final_response(state: AgentState) -> FinalResponse:
         )
 
     if intent == "faq_question":
+        if docs:
+            titles = _doc_titles(docs)
+            return FinalResponse(
+                message=f"Based on the business documents ({titles}), the team can help confirm the best next step after a short discovery call.",
+                next_step="Use retrieved documentation to answer the question.",
+            )
         return FinalResponse(
-            message="Here is a mock Week 1 answer based on the demo business docs. We usually start with a short discovery step and then recommend the best service path.",
-            next_step="Answer with real retrieved documentation in Week 2.",
+            message="I could not find that in the business documents, but I can collect your details and have the team confirm.",
+            next_step="Collect details for team follow-up.",
         )
 
     return FinalResponse(
@@ -149,16 +176,23 @@ def mock_generate_final_response(state: AgentState) -> FinalResponse:
 
 
 def _extract_budget(message: str) -> int | None:
-    explicit_budget = re.search(
+    patterns = (
         r"(?:budget(?:\s+is|\s+of|:)?|spend(?:ing)?|around)\s*\$?\s*(\d[\d,]*)",
-        message,
-        flags=re.IGNORECASE,
+        r"\$[\s]*(\d[\d,]*)",
+        r"\b(\d[\d,]*)\s*(?:budget|dollar|usd)\b",
     )
-    dollar_amount = re.search(r"\$\s*(\d[\d,]*)", message)
-    match = explicit_budget or dollar_amount
+    match = None
+    for pattern in patterns:
+        match = re.search(pattern, message, flags=re.IGNORECASE)
+        if match:
+            break
     if not match:
         return None
     return int(match.group(1).replace(",", ""))
+
+
+def _normalize_name(name: str) -> str:
+    return " ".join(part.capitalize() for part in name.split())
 
 
 def _extract_service_interest(lowered: str) -> str | None:
@@ -166,6 +200,7 @@ def _extract_service_interest(lowered: str) -> str | None:
         ("paid ads", ("paid ads", "google ads", "facebook ads", "ads")),
         ("website design", ("website design", "web design", "website")),
         ("AI automation", ("ai automation", "automation")),
+        ("lead generation", ("lead generation", "lead gen")),
         ("SEO", ("seo",)),
         ("marketing", ("marketing",)),
     )
@@ -176,14 +211,56 @@ def _extract_service_interest(lowered: str) -> str | None:
 
 
 def _extract_business_type(lowered: str) -> str | None:
-    for business_type in ("gym", "ecommerce", "real estate", "agency", "restaurant"):
+    for business_type in ("gym", "ecommerce", "real estate", "agency", "restaurant", "clinic", "coach", "startup"):
         if business_type in lowered:
             return business_type
     return None
 
 
 def _extract_timeline(lowered: str) -> str | None:
-    for timeline in ("this week", "next week", "next month", "today", "asap"):
+    for timeline in ("this week", "next week", "next month", "today", "asap", "in 2 weeks", "in 30 days"):
         if timeline in lowered:
             return "ASAP" if timeline == "asap" else timeline
     return None
+
+
+def _pricing_response_from_docs(docs: list[dict]) -> str:
+    pricing_docs = [doc for doc in docs if "pricing" in doc.get("title", "").lower()]
+    docs_to_use = pricing_docs or docs
+    text = "\n".join(doc.get("content", "") for doc in docs_to_use)
+    if not text:
+        return "I could not find that in the business documents, but I can collect your details and have the team confirm."
+
+    prices = re.findall(r"(?:(?:SEO Starter Package|SEO Growth Package|Website Design|Paid Ads Setup|AI Automation Setup)[^.\n$]*\$[\d,]+(?:/month)?)", text)
+    if prices:
+        joined = "; ".join(dict.fromkeys(price.strip("- ").strip() for price in prices[:4]))
+        return f"According to the pricing document, {joined}."
+
+    return "I found the pricing document, but I could not identify a specific price for that question. I can collect your details and have the team confirm."
+
+
+def _pricing_hint_for_service(service: str, docs: list[dict]) -> str | None:
+    if not docs:
+        return None
+    text = "\n".join(doc.get("content", "") for doc in docs if "pricing" in doc.get("title", "").lower())
+    if not text:
+        return None
+
+    lowered_service = service.lower()
+    patterns = {
+        "seo": r"SEO (?:Starter|Growth) Package[^.\n]*\$[\d,]+(?:/month)?",
+        "website": r"Website Design[^.\n]*\$[\d,]+",
+        "paid ads": r"Paid Ads Setup[^.\n]*\$[\d,]+",
+        "automation": r"AI Automation Setup[^.\n]*\$[\d,]+",
+    }
+    for key, pattern in patterns.items():
+        if key in lowered_service:
+            matches = re.findall(pattern, text)
+            if matches:
+                return f"The pricing document lists {' and '.join(matches[:2])}."
+    return None
+
+
+def _doc_titles(docs: list[dict]) -> str:
+    titles = [doc.get("title") for doc in docs if doc.get("title")]
+    return ", ".join(dict.fromkeys(titles))

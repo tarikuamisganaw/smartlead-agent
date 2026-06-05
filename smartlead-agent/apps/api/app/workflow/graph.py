@@ -19,7 +19,7 @@ def build_graph(db: Session):
     graph = StateGraph(AgentState)
 
     graph.add_node("intent_router", intent_router_node)
-    graph.add_node("rag", rag_node)
+    graph.add_node("rag", lambda state: rag_node(state, db))
     graph.add_node("lead_qualification", lead_qualification_node)
     graph.add_node("lead_scoring", lead_scoring_node)
     graph.add_node("safety", safety_node)

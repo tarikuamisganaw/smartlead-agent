@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Lead
 from app.schemas import LeadInfo
+from app.services.lead_service import create_or_update_lead
 
 
 def mock_search_docs(query: str) -> list[dict]:
@@ -47,6 +48,17 @@ def mock_search_docs(query: str) -> list[dict]:
     return docs
 
 
+def create_or_update_lead_record(
+    db: Session,
+    conversation_id: str,
+    lead_info: LeadInfo | dict,
+    lead_score: int | None,
+    lead_quality: str | None,
+) -> Lead:
+    lead_data = lead_info.model_dump() if isinstance(lead_info, LeadInfo) else dict(lead_info)
+    return create_or_update_lead(db, conversation_id, lead_data, lead_score, lead_quality)
+
+
 def mock_create_lead_record(
     db: Session,
     conversation_id: str,
@@ -79,5 +91,23 @@ def mock_send_owner_notification(lead_info: LeadInfo | dict) -> dict:
     return {
         "status": "mock_sent",
         "message": "Owner notification would be sent here.",
-        "lead_info": lead_data,
+        "lead_summary": {
+            "name": lead_data.get("name"),
+            "email": lead_data.get("email"),
+            "service_interest": lead_data.get("service_interest"),
+            "budget": lead_data.get("budget"),
+            "lead_quality": lead_data.get("lead_quality"),
+        },
+    }
+
+
+def create_followup_draft(lead_info: LeadInfo | dict, retrieved_docs: list[dict]) -> dict:
+    lead_data = lead_info.model_dump() if isinstance(lead_info, LeadInfo) else dict(lead_info)
+    service = lead_data.get("service_interest") or "your project"
+    name = lead_data.get("name") or "there"
+    doc_titles = ", ".join(dict.fromkeys(doc.get("title", "") for doc in retrieved_docs if doc.get("title")))
+    context = f" I reviewed {doc_titles}." if doc_titles else ""
+    return {
+        "status": "draft_created",
+        "message": f"Hi {name}, thanks for sharing details about {service}.{context} The team can confirm fit and next steps on a discovery call.",
     }

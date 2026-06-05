@@ -1,6 +1,8 @@
 # SmartLead Agent
 
-SmartLead Agent is an AI website assistant backend for small businesses. Week 1 builds the backend foundation only: FastAPI endpoints, database models, schemas, a deterministic LangGraph workflow, mock LLM/RAG behavior, trace persistence, and tests.
+SmartLead Agent is an AI website assistant backend for small businesses.
+
+Week 2 includes the backend foundation from Week 1 plus local document ingestion, local RAG over demo business markdown files, conversation memory, lead create/update behavior, trace persistence, and tool-call logging.
 
 ## Structure
 
@@ -16,6 +18,7 @@ cd apps/api
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+python -m app.scripts.ingest_demo_docs
 uvicorn app.main:app --reload
 ```
 
@@ -30,7 +33,7 @@ cd apps/api
 pytest
 ```
 
-## Week 1 Scope
+## Current Scope
 
 Included:
 
@@ -39,15 +42,20 @@ Included:
 - `/conversations/{conversation_id}`
 - `/agent-runs/{agent_run_id}/trace`
 - `/leads`
+- `/approvals`
+- `/documents/ingest-demo`
+- `/documents`
+- `/rag/search`
 - SQLite persistence through SQLAlchemy
-- Mock LangGraph workflow
-- Mock intent classification, lead extraction, document search, and notifications
+- LangGraph workflow with local RAG and mocked LLM behavior
+- Lead memory across turns
+- Trace and tool-call persistence
 
 Not included yet:
 
 - Frontend
-- Real RAG
 - Real LLM provider calls
 - Google Sheets
 - Email or Slack
 - Auth
+- Production deployment

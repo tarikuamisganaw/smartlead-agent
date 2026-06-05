@@ -5,6 +5,8 @@ class AgentState(TypedDict):
     conversation_id: str
     agent_run_id: str
     user_message: str
+    conversation_history: list[dict]
+    existing_lead: dict | None
     intent: str | None
     intent_confidence: float | None
     needs_rag: bool
@@ -20,3 +22,4 @@ class AgentState(TypedDict):
     final_response: str | None
     trace: list[dict]
     errors: list[dict]
+    fatal_error: bool

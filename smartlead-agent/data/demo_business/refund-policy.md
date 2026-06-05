@@ -4,4 +4,6 @@ Refund requests require human review.
 
 Discounts require manager approval.
 
-Guarantees and promises of specific marketing results require human approval before any response is finalized.
+The AI assistant cannot approve refunds or discounts automatically.
+
+Guarantees of exact results are not allowed. Promises of specific marketing outcomes require human review before any response is finalized.
