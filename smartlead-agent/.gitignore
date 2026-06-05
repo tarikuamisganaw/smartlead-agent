@@ -1,6 +1,11 @@
 .venv/
 __pycache__/
 .pytest_cache/
+.env
+.env.*
+node_modules/
+.next/
+out/
 *.pyc
 *.db
 *.sqlite

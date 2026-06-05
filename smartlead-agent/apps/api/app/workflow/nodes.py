@@ -3,9 +3,13 @@ from time import perf_counter
 from sqlalchemy.orm import Session
 
 from app.models import HumanApproval
-from app.services.mock_llm import mock_classify_intent, mock_extract_lead_info, mock_generate_final_response
 from app.services.mock_tools import create_followup_draft, create_or_update_lead_record, mock_send_owner_notification
 from app.services.lead_service import merge_lead_info, score_lead_info
+from app.services.llm_service import (
+    classify_intent_with_metadata,
+    extract_lead_info_with_metadata,
+    generate_final_response_with_metadata,
+)
 from app.services.rag_service import search_docs
 from app.services.trace_service import add_trace_event_to_state, now_ms, persist_tool_call
 from app.workflow.state import AgentState
@@ -18,7 +22,8 @@ def intent_router_node(state: AgentState) -> AgentState:
     started = perf_counter()
     node_name = "intent_router_node"
     try:
-        result = mock_classify_intent(state["user_message"])
+        llm_result = classify_intent_with_metadata(state["user_message"], _conversation_context(state))
+        result = llm_result.value
         state["intent"] = result.intent
         state["intent_confidence"] = result.confidence
         state["needs_rag"] = result.needs_rag
@@ -35,8 +40,10 @@ def intent_router_node(state: AgentState) -> AgentState:
             node_name=node_name,
             input_summary=_short(state["user_message"]),
             output_summary=(
-                f"intent={state['intent']}, confidence={state['intent_confidence']}, "
-                f"needs_rag={state['needs_rag']}"
+                f"Classified intent as {state['intent']} using provider={llm_result.provider} "
+                f"model={llm_result.model}; confidence={state['intent_confidence']}; "
+                f"needs_rag={state['needs_rag']}; fallback_used={llm_result.fallback_used}"
+                f"{_trace_error_suffix(llm_result.error_message)}"
             ),
             status="success",
             latency_ms=now_ms(started),
@@ -113,7 +120,8 @@ def lead_qualification_node(state: AgentState) -> AgentState:
             )
             return state
 
-        lead_info = mock_extract_lead_info(state["user_message"])
+        llm_result = extract_lead_info_with_metadata(state["user_message"], _conversation_context(state))
+        lead_info = llm_result.value
         merged_info = merge_lead_info(state.get("existing_lead"), lead_info.model_dump())
         state["lead_info"] = merged_info
         state["missing_lead_fields"] = merged_info.get("missing_fields", [])
@@ -124,7 +132,9 @@ def lead_qualification_node(state: AgentState) -> AgentState:
             input_summary=_short(state["user_message"]),
             output_summary=(
                 f"service_interest={merged_info.get('service_interest')}, budget={merged_info.get('budget')}, "
-                f"missing={merged_info.get('missing_fields', [])}"
+                f"missing={merged_info.get('missing_fields', [])}; provider={llm_result.provider} "
+                f"model={llm_result.model}; fallback_used={llm_result.fallback_used}"
+                f"{_trace_error_suffix(llm_result.error_message)}"
             ),
             status="success",
             latency_ms=now_ms(started),
@@ -333,16 +343,21 @@ def final_response_node(state: AgentState) -> AgentState:
             state["final_response"] = "Sorry, something went wrong while processing that request. The team can review it."
             status = "failed"
         else:
-            final = mock_generate_final_response(state)
+            llm_result = generate_final_response_with_metadata(state)
+            final = llm_result.value
             state["final_response"] = final.message
             status = "success"
+            provider_summary = (
+                f"; provider={llm_result.provider} model={llm_result.model}; "
+                f"fallback_used={llm_result.fallback_used}{_trace_error_suffix(llm_result.error_message)}"
+            )
 
         add_trace_event_to_state(
             state,
             agent_name=AGENT_NAME,
             node_name=node_name,
             input_summary=f"intent={state.get('intent')}",
-            output_summary=_short(state["final_response"] or ""),
+            output_summary=_short(f"{state['final_response'] or ''}{provider_summary if status == 'success' else ''}"),
             status=status,
             latency_ms=now_ms(started),
         )
@@ -391,6 +406,22 @@ def _approval_action_type(message: str) -> str:
     if any(keyword in lowered for keyword in ("guarantee", "promise results", "can you guarantee")):
         return "guarantee_request"
     return "risky_request"
+
+
+def _conversation_context(state: AgentState) -> str:
+    parts = []
+    existing_lead = state.get("existing_lead")
+    if existing_lead:
+        parts.append(f"Existing lead: {existing_lead}")
+    for message in (state.get("conversation_history") or [])[-6:]:
+        parts.append(f"{message.get('role')}: {message.get('content')}")
+    return "\n".join(parts)
+
+
+def _trace_error_suffix(error_message: str | None) -> str:
+    if not error_message:
+        return ""
+    return f"; fallback_error={_short(error_message, 120)}"
 
 
 def _record_node_failure(state: AgentState, node_name: str, exc: Exception, started: float) -> None:

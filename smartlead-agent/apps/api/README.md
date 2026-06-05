@@ -2,7 +2,7 @@
 
 Backend foundation for SmartLead Agent, a production-style AI website assistant for small businesses.
 
-Week 2 keeps the app local and keyless while adding real document ingestion, local RAG, conversation memory, lead update behavior, tool-call logging, and stronger tests. It still does not include a frontend, auth, real email/Slack, Google Sheets, or paid LLM calls.
+Week 3A keeps mock mode for local development and tests while adding an optional Gemini LLM provider. It still does not include a frontend, auth, real email/Slack, Google Sheets, CRM, or real notifications.
 
 ## Install
 
@@ -42,6 +42,28 @@ OpenAPI docs are available at `http://127.0.0.1:8000/docs`.
 ```bash
 pytest
 ```
+
+Tests use mock mode by default and do not require `GEMINI_API_KEY`.
+
+## LLM Provider Modes
+
+Mock mode is the default and uses deterministic local rules:
+
+```bash
+export MODEL_PROVIDER=mock
+```
+
+Gemini mode uses the `google-genai` SDK for structured intent classification, lead extraction, and final response generation:
+
+```bash
+export MODEL_PROVIDER=gemini
+export GEMINI_API_KEY=your_key
+export GEMINI_MODEL=gemini-3.5-flash
+export LLM_TIMEOUT_SECONDS=30
+export LLM_MAX_RETRIES=1
+```
+
+If `gemini-3.5-flash` is unavailable for your account, set `GEMINI_MODEL` to another Gemini Flash model. If Gemini fails during `/chat`, the workflow falls back to mock behavior and records the fallback in trace output.
 
 ## Endpoints
 
@@ -149,10 +171,8 @@ Set `DATABASE_URL` to point at another SQLAlchemy-supported database later, such
 
 ## Still Mocked
 
-- Intent classification
-- Lead extraction
-- Response generation
 - Owner notification
 - Follow-up draft sending
+- Slack, email, Google Sheets, and CRM integrations
 
-The RAG retrieval is real and local, but no real LLM provider is called.
+The RAG retrieval is real and local. Intent classification, lead extraction, and response generation are mocked in `MODEL_PROVIDER=mock` and Gemini-backed in `MODEL_PROVIDER=gemini`.

@@ -8,6 +8,7 @@ Week 2 includes the backend foundation from Week 1 plus local document ingestion
 
 ```text
 apps/api/        FastAPI backend
+apps/web/        Next.js frontend
 data/            Demo business markdown docs
 ```
 
@@ -25,6 +26,16 @@ uvicorn app.main:app --reload
 If your system exposes Python as `python3`, use `python3 -m venv .venv`.
 
 Then open `http://127.0.0.1:8000/docs`.
+
+## Run The Frontend
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+Then open `http://localhost:3000`.
 
 ## Test
 
@@ -50,6 +61,7 @@ Included:
 - LangGraph workflow with local RAG and mocked LLM behavior
 - Lead memory across turns
 - Trace and tool-call persistence
+- Next.js chat UI connected to the backend
 
 Not included yet:
 
