@@ -189,11 +189,16 @@ export default function ChatWindow() {
               <h2 className="text-sm font-semibold text-ink">Links</h2>
               <div className="mt-3 grid gap-2 text-sm">
                 <Link className="text-brand hover:underline" href={`/dashboard/traces/${latestResponse.agent_run_id}`}>
-                  View run trace
+                  View full trace
                 </Link>
                 {hasLeadInfo ? (
                   <Link className="text-brand hover:underline" href="/dashboard/leads">
                     View leads
+                  </Link>
+                ) : null}
+                {latestResponse.requires_human_approval ? (
+                  <Link className="text-brand hover:underline" href="/dashboard/approvals">
+                    View approvals
                   </Link>
                 ) : null}
               </div>

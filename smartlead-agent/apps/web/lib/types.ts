@@ -43,6 +43,36 @@ export type Lead = {
   created_at?: string;
 };
 
+export type AgentRun = {
+  id: string;
+  conversation_id: string;
+  user_message: string;
+  final_response?: string | null;
+  status: string;
+  started_at: string;
+  finished_at?: string | null;
+  total_latency_ms?: number | null;
+  total_model_calls: number;
+  estimated_cost: number;
+};
+
+export type ConversationListItem = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  status: string;
+  last_message?: string | null;
+  latest_agent_run_id?: string | null;
+};
+
+export type ChatMessageRecord = {
+  id: string;
+  conversation_id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+};
+
 export type ToolCall = {
   id: string;
   agent_run_id: string;
@@ -65,14 +95,25 @@ export type ConversationResponse = {
   status: string;
   created_at: string;
   updated_at: string;
-  messages: Array<{
-    id: string;
-    conversation_id: string;
-    role: "user" | "assistant";
-    content: string;
-    created_at: string;
-  }>;
+  messages: ChatMessageRecord[];
   latest_lead?: Lead | null;
+};
+
+export type ConversationAgentRunsResponse = {
+  conversation_id: string;
+  agent_runs: AgentRun[];
+};
+
+export type DashboardSummary = {
+  total_conversations: number;
+  total_leads: number;
+  hot_leads: number;
+  warm_leads: number;
+  cold_leads: number;
+  pending_approvals: number;
+  total_documents: number;
+  total_document_chunks: number;
+  recent_agent_runs: AgentRun[];
 };
 
 export type Approval = {

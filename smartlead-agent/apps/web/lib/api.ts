@@ -1,9 +1,13 @@
 import type {
+  AgentRun,
   AgentTraceResponse,
   Approval,
   ChatRequest,
   ChatResponse,
+  ConversationAgentRunsResponse,
+  ConversationListItem,
   ConversationResponse,
+  DashboardSummary,
   DocumentInfo,
   Lead,
   RagResult,
@@ -49,8 +53,24 @@ export function getConversation(conversationId: string) {
   return request<ConversationResponse>(`/conversations/${conversationId}`);
 }
 
+export function getConversations(limit = 25) {
+  return request<{ conversations: ConversationListItem[] }>(`/conversations?limit=${limit}`);
+}
+
+export function getConversationAgentRuns(conversationId: string) {
+  return request<ConversationAgentRunsResponse>(`/conversations/${conversationId}/agent-runs`);
+}
+
+export function getAgentRuns(limit = 25) {
+  return request<{ agent_runs: AgentRun[] }>(`/agent-runs?limit=${limit}`);
+}
+
 export function getAgentTrace(agentRunId: string) {
   return request<AgentTraceResponse>(`/agent-runs/${agentRunId}/trace`);
+}
+
+export function getDashboardSummary() {
+  return request<DashboardSummary>("/dashboard/summary");
 }
 
 export function getLeads() {

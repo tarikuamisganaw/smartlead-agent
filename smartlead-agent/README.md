@@ -1,8 +1,8 @@
 # SmartLead Agent
 
-SmartLead Agent is an AI website assistant backend for small businesses.
+SmartLead Agent is a local MVP for an AI website assistant for small businesses.
 
-Week 2 includes the backend foundation from Week 1 plus local document ingestion, local RAG over demo business markdown files, conversation memory, lead create/update behavior, trace persistence, and tool-call logging.
+Week 3C includes the backend foundation, local document ingestion, local RAG over demo business markdown files, conversation memory, lead create/update behavior, trace persistence, optional Gemini provider support, a working chat UI, and operational dashboard pages.
 
 ## Structure
 
@@ -31,11 +31,21 @@ Then open `http://127.0.0.1:8000/docs`.
 
 ```bash
 cd apps/web
+cp .env.example .env.local
 npm install
 npm run dev
 ```
 
 Then open `http://localhost:3000`.
+
+Dashboard pages:
+
+- `http://localhost:3000/dashboard`
+- `http://localhost:3000/dashboard/leads`
+- `http://localhost:3000/dashboard/conversations`
+- `http://localhost:3000/dashboard/approvals`
+- `http://localhost:3000/dashboard/documents`
+- `http://localhost:3000/dashboard/rag-test`
 
 ## Test
 
@@ -50,7 +60,11 @@ Included:
 
 - `/health`
 - `/chat`
+- `/dashboard/summary`
+- `/conversations`
 - `/conversations/{conversation_id}`
+- `/conversations/{conversation_id}/agent-runs`
+- `/agent-runs`
 - `/agent-runs/{agent_run_id}/trace`
 - `/leads`
 - `/approvals`
@@ -62,12 +76,11 @@ Included:
 - Lead memory across turns
 - Trace and tool-call persistence
 - Next.js chat UI connected to the backend
+- Dashboard pages for leads, conversations, traces, approvals, documents, and RAG testing
 
 Not included yet:
 
-- Frontend
-- Real LLM provider calls
-- Google Sheets
-- Email or Slack
+- Real Slack, email, Google Sheets, or CRM integrations
 - Auth
+- Payment
 - Production deployment

@@ -1,11 +1,12 @@
 # SmartLead Agent Web
 
-Next.js frontend foundation for SmartLead Agent.
+Next.js frontend for the local SmartLead Agent MVP.
 
 ## Install
 
 ```bash
 cd apps/web
+cp .env.example .env.local
 npm install
 ```
 
@@ -55,7 +56,33 @@ npm run build
 - Agent run summary
 - Lead info card
 - Trace preview
-- Dashboard placeholder
-- Minimal leads, approvals, documents, trace, and RAG test pages
+- Dashboard overview
+- Leads table
+- Conversations list and detail pages
+- Full trace timeline page
+- Read-only approvals queue
+- Documents page with demo ingestion
+- RAG search tester
 
-Full dashboard workflows come later.
+## Dashboard Pages
+
+- `/dashboard`
+- `/dashboard/leads`
+- `/dashboard/conversations`
+- `/dashboard/conversations/[conversationId]`
+- `/dashboard/traces/[agentRunId]`
+- `/dashboard/approvals`
+- `/dashboard/documents`
+- `/dashboard/rag-test`
+
+## Demo Flow
+
+1. Start the backend and frontend.
+2. Open `http://localhost:3000`.
+3. Send: `How much does SEO cost?`
+4. Send: `I need SEO for my gym. My budget is $2000.`
+5. Continue the same conversation with: `My name is Sara and my email is sara@example.com`
+6. Send: `Can you give me 70% discount and promise results?`
+7. Inspect the dashboard pages.
+
+Slack, email, Google Sheets, CRM integrations, auth, payments, and deployment are planned later. External notifications are still mocked.

@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import DashboardLayout from "@/components/DashboardLayout";
+import DocumentsTable from "@/components/DocumentsTable";
+import EmptyState from "@/components/EmptyState";
 import ErrorState from "@/components/ErrorState";
 import LoadingState from "@/components/LoadingState";
 import { getDocuments, ingestDemoDocuments } from "@/lib/api";
@@ -11,6 +14,7 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ingestResult, setIngestResult] = useState<string | null>(null);
 
   async function loadDocuments() {
     setLoading(true);
@@ -32,8 +36,10 @@ export default function DocumentsPage() {
   async function handleIngest() {
     setBusy(true);
     setError(null);
+    setIngestResult(null);
     try {
-      await ingestDemoDocuments();
+      const result = await ingestDemoDocuments();
+      setIngestResult(`${result.documents_ingested} documents ingested, ${result.chunks_created} chunks created.`);
       await loadDocuments();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not ingest documents.");
@@ -43,37 +49,36 @@ export default function DocumentsPage() {
   }
 
   return (
-    <main className="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-5">
-          <h1 className="text-3xl font-semibold text-ink">Documents</h1>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={handleIngest}
-              disabled={busy}
-              className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white disabled:bg-ink/25"
-            >
-              Ingest demo docs
-            </button>
-            <a className="rounded-md border border-line bg-white px-4 py-2 text-sm font-medium text-ink hover:text-brand" href="/dashboard">
-              Dashboard
-            </a>
-          </div>
-        </div>
+    <DashboardLayout
+      title="Documents"
+      subtitle="Business markdown files stored in SQLite and chunked for local RAG retrieval."
+      actions={
+        <button
+          type="button"
+          onClick={handleIngest}
+          disabled={busy}
+          className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:bg-ink/25"
+        >
+          {busy ? "Ingesting..." : "Ingest demo documents"}
+        </button>
+      }
+    >
+      <div className="space-y-4">
+        <p className="rounded-md border border-line bg-panel px-4 py-3 text-sm leading-6 text-ink/65">
+          Editing markdown files does not update the database until documents are ingested again.
+        </p>
+        {ingestResult ? (
+          <p className="rounded-md border border-brand/25 bg-brand/10 px-4 py-3 text-sm font-medium text-brand">
+            {ingestResult}
+          </p>
+        ) : null}
         {loading ? <LoadingState label="Loading documents..." /> : null}
         {error ? <ErrorState message={error} /> : null}
-        <div className="grid gap-3">
-          {documents.map((document) => (
-            <article key={document.id} className="rounded-md border border-line bg-white p-4">
-              <h2 className="font-semibold text-ink">{document.title}</h2>
-              <p className="mt-1 break-all text-sm text-ink/60">{document.source}</p>
-              <p className="mt-3 text-sm text-ink/70">{document.chunk_count} chunk(s)</p>
-            </article>
-          ))}
-          {!loading && !documents.length ? <p className="text-sm text-ink/60">No documents ingested yet.</p> : null}
-        </div>
+        {!loading && !error && documents.length ? <DocumentsTable documents={documents} /> : null}
+        {!loading && !error && !documents.length ? (
+          <EmptyState title="No documents ingested yet." message="Use the ingest button to load the demo business markdown files." />
+        ) : null}
       </div>
-    </main>
+    </DashboardLayout>
   );
 }

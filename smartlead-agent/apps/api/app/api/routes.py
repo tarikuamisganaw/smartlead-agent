@@ -2,12 +2,23 @@ from time import perf_counter
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import AgentRun, AgentTraceEvent, HumanApproval, ToolCall, utc_now
+from app.models import (
+    AgentRun,
+    AgentTraceEvent,
+    Conversation,
+    Document,
+    DocumentChunk,
+    HumanApproval,
+    Lead,
+    Message,
+    ToolCall,
+    utc_now,
+)
 from app.schemas import ChatRequest, ChatResponse, RagSearchRequest
 from app.services.conversation_service import add_message, get_conversation_with_messages, get_or_create_conversation
 from app.services.document_service import default_demo_data_dir, ingest_documents, list_documents_with_chunk_counts
@@ -191,6 +202,64 @@ async def get_leads(db: Session = Depends(get_db)) -> dict:
     return {"leads": [lead_to_dict(lead) for lead in list_leads(db)]}
 
 
+@router.get("/conversations")
+async def get_conversations(db: Session = Depends(get_db), limit: int = 25) -> dict:
+    limit = min(max(limit, 1), 100)
+    statement = select(Conversation).order_by(Conversation.updated_at.desc()).limit(limit)
+    conversations = db.scalars(statement).all()
+
+    return {
+        "conversations": [
+            _conversation_summary_to_dict(db, conversation)
+            for conversation in conversations
+        ]
+    }
+
+
+@router.get("/conversations/{conversation_id}/agent-runs")
+async def get_conversation_agent_runs(conversation_id: str, db: Session = Depends(get_db)) -> dict:
+    conversation = db.get(Conversation, conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+
+    statement = (
+        select(AgentRun)
+        .where(AgentRun.conversation_id == conversation_id)
+        .order_by(AgentRun.started_at.desc())
+    )
+    agent_runs = db.scalars(statement).all()
+    return {
+        "conversation_id": conversation_id,
+        "agent_runs": [_agent_run_to_dict(agent_run) for agent_run in agent_runs],
+    }
+
+
+@router.get("/agent-runs")
+async def get_agent_runs(db: Session = Depends(get_db), limit: int = 25) -> dict:
+    limit = min(max(limit, 1), 100)
+    statement = select(AgentRun).order_by(AgentRun.started_at.desc()).limit(limit)
+    agent_runs = db.scalars(statement).all()
+    return {"agent_runs": [_agent_run_to_dict(agent_run) for agent_run in agent_runs]}
+
+
+@router.get("/dashboard/summary")
+async def get_dashboard_summary(db: Session = Depends(get_db)) -> dict:
+    recent_statement = select(AgentRun).order_by(AgentRun.started_at.desc()).limit(5)
+    recent_agent_runs = db.scalars(recent_statement).all()
+
+    return {
+        "total_conversations": _count_rows(db, Conversation),
+        "total_leads": _count_rows(db, Lead),
+        "hot_leads": _count_leads_by_quality(db, "hot"),
+        "warm_leads": _count_leads_by_quality(db, "warm"),
+        "cold_leads": _count_leads_by_quality(db, "cold"),
+        "pending_approvals": _count_pending_approvals(db),
+        "total_documents": _count_rows(db, Document),
+        "total_document_chunks": _count_rows(db, DocumentChunk),
+        "recent_agent_runs": [_agent_run_to_dict(agent_run) for agent_run in recent_agent_runs],
+    }
+
+
 @router.post("/documents/ingest-demo")
 async def ingest_demo_documents(db: Session = Depends(get_db)) -> dict:
     try:
@@ -229,6 +298,52 @@ def _message_to_dict(message: Any) -> dict:
     }
 
 
+def _agent_run_to_dict(agent_run: AgentRun) -> dict:
+    return {
+        "id": agent_run.id,
+        "conversation_id": agent_run.conversation_id,
+        "user_message": agent_run.user_message,
+        "final_response": agent_run.final_response,
+        "status": agent_run.status,
+        "started_at": agent_run.started_at.isoformat(),
+        "finished_at": agent_run.finished_at.isoformat() if agent_run.finished_at else None,
+        "total_latency_ms": agent_run.total_latency_ms,
+        "total_model_calls": agent_run.total_model_calls,
+        "estimated_cost": agent_run.estimated_cost,
+    }
+
+
+def _conversation_summary_to_dict(db: Session, conversation: Conversation) -> dict:
+    latest_message = db.scalars(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.created_at.desc())
+        .limit(1)
+    ).first()
+    latest_agent_run = db.scalars(
+        select(AgentRun)
+        .where(AgentRun.conversation_id == conversation.id)
+        .order_by(AgentRun.started_at.desc())
+        .limit(1)
+    ).first()
+
+    return {
+        "id": conversation.id,
+        "created_at": conversation.created_at.isoformat(),
+        "updated_at": conversation.updated_at.isoformat(),
+        "status": conversation.status,
+        "last_message": _message_preview(latest_message.content) if latest_message else None,
+        "latest_agent_run_id": latest_agent_run.id if latest_agent_run else None,
+    }
+
+
+def _message_preview(content: str, limit: int = 120) -> str:
+    normalized = " ".join(content.split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[: limit - 1].rstrip()}..."
+
+
 def _tool_call_to_dict(tool_call: ToolCall) -> dict:
     return {
         "id": tool_call.id,
@@ -253,3 +368,15 @@ def _approval_to_dict(approval: HumanApproval) -> dict:
         "created_at": approval.created_at.isoformat(),
         "approved_at": approval.approved_at.isoformat() if approval.approved_at else None,
     }
+
+
+def _count_rows(db: Session, model: Any) -> int:
+    return int(db.scalar(select(func.count()).select_from(model)) or 0)
+
+
+def _count_leads_by_quality(db: Session, quality: str) -> int:
+    return int(db.scalar(select(func.count()).select_from(Lead).where(Lead.lead_quality == quality)) or 0)
+
+
+def _count_pending_approvals(db: Session) -> int:
+    return int(db.scalar(select(func.count()).select_from(HumanApproval).where(HumanApproval.status == "pending")) or 0)

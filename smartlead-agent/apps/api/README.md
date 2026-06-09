@@ -2,7 +2,7 @@
 
 Backend foundation for SmartLead Agent, a production-style AI website assistant for small businesses.
 
-Week 3A keeps mock mode for local development and tests while adding an optional Gemini LLM provider. It still does not include a frontend, auth, real email/Slack, Google Sheets, CRM, or real notifications.
+Week 3C keeps mock mode for local development and tests, includes optional Gemini LLM provider support, and exposes dashboard-friendly read endpoints. It still does not include auth, real email/Slack, Google Sheets, CRM, or real notifications.
 
 ## Install
 
@@ -69,7 +69,11 @@ If `gemini-3.5-flash` is unavailable for your account, set `GEMINI_MODEL` to ano
 
 - `GET /health`
 - `POST /chat`
+- `GET /dashboard/summary`
+- `GET /conversations`
 - `GET /conversations/{conversation_id}`
+- `GET /conversations/{conversation_id}/agent-runs`
+- `GET /agent-runs`
 - `GET /agent-runs/{agent_run_id}/trace`
 - `GET /leads`
 - `GET /approvals`
@@ -129,6 +133,18 @@ Conversation:
 
 ```bash
 curl http://localhost:8000/conversations/{conversation_id}
+```
+
+Recent conversations:
+
+```bash
+curl http://localhost:8000/conversations
+```
+
+Dashboard summary:
+
+```bash
+curl http://localhost:8000/dashboard/summary
 ```
 
 Trace and tool calls:

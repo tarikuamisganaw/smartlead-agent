@@ -1,12 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
+import DashboardLayout from "@/components/DashboardLayout";
+import EmptyState from "@/components/EmptyState";
 import ErrorState from "@/components/ErrorState";
 import LoadingState from "@/components/LoadingState";
 import StatusBadge from "@/components/StatusBadge";
-import TracePreview from "@/components/TracePreview";
+import TraceTimeline from "@/components/TraceTimeline";
 import { getAgentTrace } from "@/lib/api";
 import type { AgentTraceResponse } from "@/lib/types";
+import { formatDateTime, shortId } from "@/lib/utils";
 
 export default function TraceDetailPage({ params }: { params: { agentRunId: string } }) {
   const [trace, setTrace] = useState<AgentTraceResponse | null>(null);
@@ -21,23 +25,26 @@ export default function TraceDetailPage({ params }: { params: { agentRunId: stri
   }, [params.agentRunId]);
 
   return (
-    <main className="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-5">
-          <div>
-            <h1 className="text-3xl font-semibold text-ink">Agent Trace</h1>
-            <p className="mt-2 break-all text-sm text-ink/60">{params.agentRunId}</p>
-          </div>
-          <a className="rounded-md border border-line bg-white px-4 py-2 text-sm font-medium text-ink hover:text-brand" href="/dashboard">
-            Dashboard
-          </a>
-        </div>
+    <DashboardLayout
+      title="Agent Trace"
+      subtitle={`Run ${params.agentRunId}`}
+      actions={
+        <Link className="rounded-md border border-line bg-white px-4 py-2 text-sm font-medium text-ink hover:text-brand" href="/dashboard/conversations">
+          Conversations
+        </Link>
+      }
+    >
+      <div className="space-y-5">
+        <p className="rounded-md border border-line bg-panel px-4 py-3 text-sm leading-6 text-ink/65">
+          Tracing shows the workflow path the agent followed, including nodes, tool calls, outputs, errors, and latency.
+        </p>
         {loading ? <LoadingState label="Loading trace..." /> : null}
         {error ? <ErrorState message={error} /> : null}
         {trace ? (
-          <div className="space-y-4">
-            <TracePreview trace={trace.trace} />
-            <section className="rounded-md border border-line bg-white p-4">
+          <>
+            {trace.trace.length ? <TraceTimeline trace={trace.trace} /> : <EmptyState title="No trace events recorded." />}
+
+            <section className="rounded-md border border-line bg-white p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-ink">Tool Calls</h2>
               <div className="mt-3 divide-y divide-line">
                 {(trace.tool_calls || []).map((toolCall) => (
@@ -48,18 +55,25 @@ export default function TraceDetailPage({ params }: { params: { agentRunId: stri
                       {toolCall.latency_ms !== null && toolCall.latency_ms !== undefined ? (
                         <span className="text-xs text-ink/50">{toolCall.latency_ms}ms</span>
                       ) : null}
+                      <span className="text-xs text-ink/45">{formatDateTime(toolCall.created_at)}</span>
                     </div>
-                    <pre className="mt-2 max-h-44 overflow-auto rounded-md bg-panel p-3 text-xs text-ink/70">
-                      {JSON.stringify(toolCall.tool_output, null, 2)}
-                    </pre>
+                    <p className="mt-2 text-xs text-ink/45">Tool call {shortId(toolCall.id)}</p>
+                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                      <pre className="max-h-64 overflow-auto rounded-md bg-panel p-3 text-xs leading-5 text-ink/70">
+                        {JSON.stringify(toolCall.tool_input, null, 2)}
+                      </pre>
+                      <pre className="max-h-64 overflow-auto rounded-md bg-panel p-3 text-xs leading-5 text-ink/70">
+                        {JSON.stringify(toolCall.tool_output, null, 2)}
+                      </pre>
+                    </div>
                   </div>
                 ))}
-                {!trace.tool_calls?.length ? <p className="text-sm text-ink/60">No tool calls recorded.</p> : null}
+                {!trace.tool_calls?.length ? <EmptyState title="No tool calls recorded." /> : null}
               </div>
             </section>
-          </div>
+          </>
         ) : null}
       </div>
-    </main>
+    </DashboardLayout>
   );
 }
