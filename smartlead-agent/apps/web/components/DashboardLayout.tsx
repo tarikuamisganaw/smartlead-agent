@@ -1,5 +1,10 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useState, type ReactNode } from "react";
 import DashboardNav from "@/components/DashboardNav";
+import LoadingState from "@/components/LoadingState";
+import ProtectedDashboardNotice from "@/components/ProtectedDashboardNotice";
+import { AUTH_ENABLED, getAccessToken, getMe } from "@/lib/api";
 
 type DashboardLayoutProps = {
   title: string;
@@ -9,6 +14,47 @@ type DashboardLayoutProps = {
 };
 
 export default function DashboardLayout({ title, subtitle, actions, children }: DashboardLayoutProps) {
+  const [accessStatus, setAccessStatus] = useState<"checking" | "allowed" | "denied">(
+    AUTH_ENABLED ? "checking" : "allowed",
+  );
+
+  useEffect(() => {
+    if (!AUTH_ENABLED) {
+      setAccessStatus("allowed");
+      return;
+    }
+    if (!getAccessToken()) {
+      setAccessStatus("denied");
+      return;
+    }
+    getMe()
+      .then((response) => {
+        const isOwner = response.memberships.some((membership) => membership.role === "owner");
+        setAccessStatus(isOwner ? "allowed" : "denied");
+      })
+      .catch(() => setAccessStatus("denied"));
+  }, []);
+
+  if (accessStatus === "checking") {
+    return (
+      <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+          <LoadingState label="Checking owner access..." />
+        </div>
+      </main>
+    );
+  }
+
+  if (accessStatus === "denied") {
+    return (
+      <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-2xl">
+          <ProtectedDashboardNotice />
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">

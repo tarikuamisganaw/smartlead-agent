@@ -16,6 +16,7 @@ Create `.env.local`:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_AUTH_ENABLED=true
 ```
 
 ## Run
@@ -64,6 +65,8 @@ npm run build
 - Documents page with demo ingestion
 - RAG search tester
 - Eval dashboard with latest results and run button
+- Guest chat state and signed-in chat history pages
+- Login/register MVP pages
 
 ## Dashboard Pages
 
@@ -76,6 +79,10 @@ npm run build
 - `/dashboard/documents`
 - `/dashboard/rag-test`
 - `/dashboard/evals`
+- `/chats`
+- `/chats/[conversationId]`
+- `/login`
+- `/register`
 
 ## Demo Flow
 
@@ -87,4 +94,6 @@ npm run build
 6. Send: `Can you give me 70% discount and promise results?`
 7. Inspect the dashboard pages.
 
-Slack, email, Google Sheets, CRM integrations, auth, payments, and deployment are planned later. External notifications are still mocked.
+Slack, email, Google Sheets, CRM integrations, payments, and deployment are planned later. External notifications are still mocked.
+
+Auth is an MVP localStorage bearer-token flow for portfolio/dev use. Production should use secure cookies or a managed auth provider.

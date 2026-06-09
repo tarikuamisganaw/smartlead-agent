@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -19,6 +19,11 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    organization_id: Mapped[str | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    anonymous_session_id: Mapped[str | None] = mapped_column(
+        ForeignKey("anonymous_sessions.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
     status: Mapped[str] = mapped_column(String, default="active")
@@ -35,6 +40,10 @@ class Message(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
     conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    anonymous_session_id: Mapped[str | None] = mapped_column(
+        ForeignKey("anonymous_sessions.id"), nullable=True, index=True
+    )
     role: Mapped[str] = mapped_column(String)
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
@@ -47,6 +56,11 @@ class Lead(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
     conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
+    organization_id: Mapped[str | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    anonymous_session_id: Mapped[str | None] = mapped_column(
+        ForeignKey("anonymous_sessions.id"), nullable=True, index=True
+    )
     name: Mapped[str | None] = mapped_column(String, nullable=True)
     email: Mapped[str | None] = mapped_column(String, nullable=True)
     phone: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -67,6 +81,11 @@ class AgentRun(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
     conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
+    organization_id: Mapped[str | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    anonymous_session_id: Mapped[str | None] = mapped_column(
+        ForeignKey("anonymous_sessions.id"), nullable=True, index=True
+    )
     user_message: Mapped[str] = mapped_column(Text)
     final_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String, default="success")
@@ -127,6 +146,7 @@ class HumanApproval(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
     agent_run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    organization_id: Mapped[str | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
     action_type: Mapped[str] = mapped_column(String)
     reason: Mapped[str] = mapped_column(Text)
     draft_response: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -141,6 +161,7 @@ class Document(Base):
     __tablename__ = "documents"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    organization_id: Mapped[str | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String)
     source: Mapped[str] = mapped_column(String)
     content: Mapped[str] = mapped_column(Text)
@@ -156,6 +177,7 @@ class DocumentChunk(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
     document_id: Mapped[str] = mapped_column(ForeignKey("documents.id"), index=True)
+    organization_id: Mapped[str | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
     source: Mapped[str] = mapped_column(String)
     title: Mapped[str] = mapped_column(String)
     chunk_index: Mapped[int] = mapped_column(Integer)
@@ -164,3 +186,44 @@ class DocumentChunk(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     document: Mapped[Document] = relationship(back_populates="chunks")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    email: Mapped[str] = mapped_column(String, unique=True, index=True)
+    hashed_password: Mapped[str] = mapped_column(String)
+    full_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    name: Mapped[str] = mapped_column(String)
+    slug: Mapped[str] = mapped_column(String, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class OrganizationMembership(Base):
+    __tablename__ = "organization_memberships"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    role: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class AnonymousSession(Base):
+    __tablename__ = "anonymous_sessions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    session_token: Mapped[str] = mapped_column(String, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

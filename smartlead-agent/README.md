@@ -2,7 +2,7 @@
 
 SmartLead Agent is a local MVP for an AI website assistant for small businesses.
 
-Week 4A includes the backend foundation, local document ingestion, local RAG over demo business markdown files, conversation memory, lead create/update behavior, trace persistence, optional Gemini provider support, a working chat UI, operational dashboard pages, and an evaluation suite with latency/cost tracking.
+Week 4B includes the backend foundation, local document ingestion, local RAG over demo business markdown files, conversation memory, lead create/update behavior, trace persistence, optional Gemini provider support, a working chat UI, operational dashboard pages, an evaluation suite with latency/cost tracking, performance diagnostics, guest chat, signed-in chat history, and an auth/RBAC foundation.
 
 ## Structure
 
@@ -47,6 +47,9 @@ Dashboard pages:
 - `http://localhost:3000/dashboard/documents`
 - `http://localhost:3000/dashboard/rag-test`
 - `http://localhost:3000/dashboard/evals`
+- `http://localhost:3000/chats`
+- `http://localhost:3000/login`
+- `http://localhost:3000/register`
 
 ## Test
 
@@ -82,6 +85,14 @@ Included:
 - `/evals/cases`
 - `/evals/latest`
 - `/evals/run`
+- `/performance/recent`
+- `/auth/register`
+- `/auth/login`
+- `/auth/me`
+- `/auth/anonymous-session`
+- `/auth/claim-anonymous-session`
+- `/my/conversations`
+- `/guest/conversations`
 - SQLite persistence through SQLAlchemy
 - LangGraph workflow with local RAG and mocked LLM behavior
 - Lead memory across turns
@@ -89,10 +100,53 @@ Included:
 - Next.js chat UI connected to the backend
 - Dashboard pages for leads, conversations, traces, approvals, documents, and RAG testing
 - Eval suite and eval dashboard for routing, RAG, lead extraction, approvals, tool calls, latency, and estimated cost
+- Guest chat and signed-in user chat history
+- Auth/RBAC foundation for guest chat, signed-in personal chat history, and owner-only dashboard access
+- RAG index caching and performance diagnostics
 
 Not included yet:
 
 - Real Slack, email, Google Sheets, or CRM integrations
-- Auth
+- Production-grade auth/session hardening
 - Payment
 - Production deployment
+
+## Access Model
+
+- Guest visitor: can chat and submit lead info; cannot access admin data when `AUTH_ENABLED=true`.
+- Signed-in user: can preserve and view their own chat history.
+- Owner: can access dashboard data, leads, traces, approvals, documents, evals, and performance diagnostics.
+
+## Performance
+
+Use the dashboard traces or:
+
+```bash
+curl http://localhost:8000/performance/recent
+BACKEND_URL=http://localhost:8000 python -m app.scripts.performance_smoke_test
+```
+
+Mock-mode chat should usually stay well under a few seconds. Gemini latency depends on network/model behavior; LLM calls have timeout/fallback behavior.
+
+## Database Notes
+
+SQLite is the local default through `DATABASE_URL=sqlite:///./smartlead.db`. Keep `DATABASE_URL` configurable so Postgres can be used later for deployed users, chats, leads, traces, and documents. Deployment is intentionally not part of Week 4B.
+
+## Resetting Local Dev Database
+
+Use only for local development if SQLite schema changes cause issues:
+
+```bash
+cd apps/api
+python -m app.scripts.reset_dev_db --yes
+```
+
+The script refuses production, creates a timestamped SQLite backup when possible, recreates tables, creates the default organization, optionally creates a demo owner from env vars, and re-ingests demo docs.
+
+## Week 4C Next
+
+- Google Sheets lead sync
+- Optional email notification
+- Optional Slack notification
+- Production database setup
+- Stronger auth/session security

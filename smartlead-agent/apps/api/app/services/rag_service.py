@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models import DocumentChunk
 from app.services.document_service import default_demo_data_dir, ingest_documents
 
@@ -18,11 +19,22 @@ except Exception:  # pragma: no cover - fallback is covered in normal local runs
 
 
 TOKEN_RE = re.compile(r"[a-zA-Z0-9]+")
+_CACHED_INDEX: "LocalRagIndex | None" = None
+
+
+@dataclass
+class RagChunk:
+    id: str
+    document_id: str
+    source: str
+    title: str
+    chunk_index: int
+    content: str
 
 
 @dataclass
 class LocalRagIndex:
-    chunks: list[DocumentChunk]
+    chunks: list[RagChunk]
     vectorizer: Any | None = None
     matrix: Any | None = None
     idf: dict[str, float] | None = None
@@ -64,7 +76,7 @@ class LocalRagIndex:
 
 def build_index_from_db(db: Session) -> LocalRagIndex:
     statement = select(DocumentChunk).order_by(DocumentChunk.source, DocumentChunk.chunk_index)
-    chunks = list(db.scalars(statement).all())
+    chunks = [_snapshot_chunk(chunk) for chunk in db.scalars(statement).all()]
     texts = [chunk.content for chunk in chunks]
 
     if not chunks:
@@ -81,14 +93,42 @@ def build_index_from_db(db: Session) -> LocalRagIndex:
 
 
 def search_docs(db: Session, query: str, top_k: int = 4) -> list[dict]:
-    index = build_index_from_db(db)
+    index = _get_index(db)
     if not index.chunks:
         ingest_documents(db, default_demo_data_dir(), clear_existing=True)
-        index = build_index_from_db(db)
+        invalidate_rag_index()
+        index = _get_index(db)
     return index.search(query, top_k=top_k)
 
 
-def _chunk_to_result(chunk: DocumentChunk, score: float) -> dict:
+def invalidate_rag_index() -> None:
+    global _CACHED_INDEX
+    _CACHED_INDEX = None
+
+
+def _get_index(db: Session) -> LocalRagIndex:
+    settings = get_settings()
+    if not settings.rag_cache_enabled:
+        return build_index_from_db(db)
+
+    global _CACHED_INDEX
+    if _CACHED_INDEX is None:
+        _CACHED_INDEX = build_index_from_db(db)
+    return _CACHED_INDEX
+
+
+def _snapshot_chunk(chunk: DocumentChunk) -> RagChunk:
+    return RagChunk(
+        id=chunk.id,
+        document_id=chunk.document_id,
+        source=chunk.source,
+        title=chunk.title,
+        chunk_index=chunk.chunk_index,
+        content=chunk.content,
+    )
+
+
+def _chunk_to_result(chunk: RagChunk, score: float) -> dict:
     return {
         "chunk_id": chunk.id,
         "document_id": chunk.document_id,

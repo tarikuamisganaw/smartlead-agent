@@ -25,6 +25,11 @@ export type ChatResponse = {
   lead_info: Record<string, unknown>;
   final_response: string;
   trace: TraceEvent[];
+  anonymous_session_token?: string | null;
+  total_latency_ms?: number | null;
+  total_model_calls?: number | null;
+  model_provider?: string | null;
+  model_name?: string | null;
 };
 
 export type Lead = {
@@ -151,6 +156,36 @@ export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   response?: ChatResponse;
+};
+
+export type User = {
+  id: string;
+  email: string;
+  full_name?: string | null;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type Membership = {
+  organization_id: string;
+  organization_name: string;
+  role: string;
+};
+
+export type AuthTokenResponse = {
+  access_token: string;
+  token_type: "bearer";
+  user: User;
+};
+
+export type AuthMeResponse = {
+  user: User;
+  memberships: Membership[];
+};
+
+export type AnonymousSessionResponse = {
+  anonymous_session_id: string;
+  session_token: string;
 };
 
 export type EvalCase = {

@@ -66,10 +66,26 @@ def create_or_update_lead(
     lead_info: dict,
     lead_score: int | None,
     lead_quality: str | None,
+    *,
+    organization_id: str | None = None,
+    user_id: str | None = None,
+    anonymous_session_id: str | None = None,
 ) -> Lead:
     lead = get_latest_lead_for_conversation(db, conversation_id)
     if not lead:
-        lead = Lead(conversation_id=conversation_id)
+        lead = Lead(
+            conversation_id=conversation_id,
+            organization_id=organization_id,
+            user_id=user_id,
+            anonymous_session_id=anonymous_session_id,
+        )
+    else:
+        if organization_id and not lead.organization_id:
+            lead.organization_id = organization_id
+        if user_id and not lead.user_id:
+            lead.user_id = user_id
+        if anonymous_session_id and not lead.anonymous_session_id:
+            lead.anonymous_session_id = anonymous_session_id
 
     for field in ("name", "email", "phone", "business_type", "service_interest", "budget", "timeline"):
         value = lead_info.get(field)

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from typing import Generic, TypeVar
 
 from app.config import get_settings
@@ -7,6 +8,7 @@ from app.services.llm_provider import LLMProvider, LLMProviderError
 from app.services.mock_llm_provider import MockLLMProvider
 
 T = TypeVar("T")
+_LLM_EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 
 @dataclass
@@ -75,17 +77,30 @@ def generate_final_response_with_metadata(state: dict) -> LLMCallResult[FinalRes
 
 
 def _call_with_fallback(call):
+    settings = get_settings()
     fallback_provider = MockLLMProvider()
-    try:
-        provider = get_llm_provider()
-        value = call(provider)
-        return LLMCallResult(value=value, provider=provider.provider_name, model=provider.model_name)
-    except Exception as exc:
-        value = call(fallback_provider)
-        return LLMCallResult(
-            value=value,
-            provider=fallback_provider.provider_name,
-            model=fallback_provider.model_name,
-            fallback_used=True,
-            error_message=str(exc),
-        )
+    last_error: Exception | None = None
+    for attempt in range(settings.llm_max_retries + 1):
+        try:
+            provider = get_llm_provider()
+            future = _LLM_EXECUTOR.submit(call, provider)
+            value = future.result(timeout=settings.llm_node_timeout_seconds)
+            return LLMCallResult(value=value, provider=provider.provider_name, model=provider.model_name)
+        except TimeoutError as exc:
+            last_error = exc
+            if attempt >= settings.llm_max_retries:
+                break
+        except Exception as exc:
+            last_error = exc
+            if attempt >= settings.llm_max_retries:
+                break
+
+    value = call(fallback_provider)
+    error_message = "LLM call timed out." if isinstance(last_error, TimeoutError) else str(last_error)
+    return LLMCallResult(
+        value=value,
+        provider=fallback_provider.provider_name,
+        model=fallback_provider.model_name,
+        fallback_used=True,
+        error_message=error_message,
+    )

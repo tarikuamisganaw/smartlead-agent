@@ -11,6 +11,7 @@ from app.database import SessionLocal, init_db
 from app.models import AgentRun, Conversation, DocumentChunk, Lead, ToolCall, utc_now
 from app.services.conversation_service import add_message, get_conversation_with_messages
 from app.services.document_service import default_demo_data_dir, ingest_documents
+from app.services.auth_service import get_or_create_default_organization
 from app.services.lead_service import get_latest_lead_for_conversation, lead_to_dict
 from app.services.metrics_service import collect_agent_run_metrics, default_model_metadata
 from app.services.trace_service import add_trace_event_to_state, now_ms, persist_trace_events
@@ -56,7 +57,8 @@ def run_all_evals(db: Session | None = None, *, persist_results: bool = True) ->
 def run_single_eval_case(case: dict, db: Session) -> dict:
     started = perf_counter()
     errors: list[str] = []
-    conversation = Conversation(status="eval")
+    organization = get_or_create_default_organization(db)
+    conversation = Conversation(status="eval", organization_id=organization.id)
     db.add(conversation)
     db.commit()
     db.refresh(conversation)
@@ -137,10 +139,12 @@ def _run_eval_turn(db: Session, conversation_id: str, message: str) -> dict:
     add_message(db, conversation_id=conversation_id, role="user", content=message)
     conversation = get_conversation_with_messages(db, conversation_id)
     existing_lead = get_latest_lead_for_conversation(db, conversation_id)
+    organization = get_or_create_default_organization(db)
     model_provider, model_name = default_model_metadata()
 
     agent_run = AgentRun(
         conversation_id=conversation_id,
+        organization_id=organization.id,
         user_message=message,
         status="success",
         model_provider=model_provider,
@@ -154,6 +158,9 @@ def _run_eval_turn(db: Session, conversation_id: str, message: str) -> dict:
         "conversation_id": conversation_id,
         "agent_run_id": agent_run.id,
         "user_message": message,
+        "organization_id": organization.id,
+        "user_id": None,
+        "anonymous_session_id": None,
         "conversation_history": [
             {"role": row.role, "content": row.content, "created_at": row.created_at.isoformat()}
             for row in (conversation.messages if conversation else [])

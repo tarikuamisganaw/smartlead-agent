@@ -10,7 +10,13 @@ async def test_health_returns_ok() -> None:
         response = await client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "smartlead-agent-api"}
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["service"] == "smartlead-agent-api"
+    assert body["environment"] == "development"
+    assert body["model_provider"] == "mock"
+    assert body["auth_enabled"] is False
+    assert body["database_connected"] is True
 
 
 @pytest.mark.anyio

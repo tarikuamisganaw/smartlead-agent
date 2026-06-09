@@ -54,9 +54,21 @@ def create_or_update_lead_record(
     lead_info: LeadInfo | dict,
     lead_score: int | None,
     lead_quality: str | None,
+    organization_id: str | None = None,
+    user_id: str | None = None,
+    anonymous_session_id: str | None = None,
 ) -> Lead:
     lead_data = lead_info.model_dump() if isinstance(lead_info, LeadInfo) else dict(lead_info)
-    return create_or_update_lead(db, conversation_id, lead_data, lead_score, lead_quality)
+    return create_or_update_lead(
+        db,
+        conversation_id,
+        lead_data,
+        lead_score,
+        lead_quality,
+        organization_id=organization_id,
+        user_id=user_id,
+        anonymous_session_id=anonymous_session_id,
+    )
 
 
 def mock_create_lead_record(

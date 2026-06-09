@@ -1,14 +1,16 @@
 from time import perf_counter
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
 from app.evals.evaluator import load_eval_cases, read_latest_eval_results, run_all_evals
 from app.models import (
+    AnonymousSession,
     AgentRun,
     AgentTraceEvent,
     Conversation,
@@ -21,11 +23,21 @@ from app.models import (
     utc_now,
 )
 from app.schemas import ChatRequest, ChatResponse, RagSearchRequest
+from app.services.auth_service import (
+    get_current_user_optional,
+    get_current_user_required,
+    get_anonymous_session_by_token,
+    get_or_create_anonymous_session,
+    get_or_create_default_organization,
+)
 from app.services.conversation_service import add_message, get_conversation_with_messages, get_or_create_conversation
 from app.services.document_service import default_demo_data_dir, ingest_documents, list_documents_with_chunk_counts
 from app.services.lead_service import get_latest_lead_for_conversation, lead_to_dict, list_leads
 from app.services.metrics_service import collect_agent_run_metrics, default_model_metadata
+from app.services.performance_service import recent_performance
 from app.services.rag_service import search_docs
+from app.services.rag_service import invalidate_rag_index
+from app.services.rbac_service import ADMIN_READ_ROLES, require_admin_read, require_admin_write, require_conversation_access, user_has_org_role
 from app.services.trace_service import add_trace_event_to_state, now_ms, persist_trace_events
 from app.workflow.graph import build_graph
 from app.workflow.state import AgentState
@@ -34,22 +46,62 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health() -> dict:
+async def health(db: Session = Depends(get_db)) -> dict:
     settings = get_settings()
-    return {"status": "ok", "service": settings.service_name}
+    database_connected = _database_connected(db)
+    return {
+        "status": "ok",
+        "service": settings.service_name,
+        "environment": settings.environment,
+        "model_provider": settings.model_provider,
+        "auth_enabled": settings.auth_enabled,
+        "database_connected": database_connected,
+        "database_kind": _database_kind(settings.database_url),
+    }
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
+async def chat(
+    request: ChatRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+    x_anonymous_session_token: str | None = Header(default=None, alias="X-Anonymous-Session-Token"),
+) -> ChatResponse:
     request_started = perf_counter()
-    conversation = get_or_create_conversation(db, request.conversation_id)
-    add_message(db, conversation_id=conversation.id, role="user", content=request.message)
+    settings = get_settings()
+    user = get_current_user_optional(http_request, db)
+    organization = get_or_create_default_organization(db)
+    anonymous_session: AnonymousSession | None = None
+    anonymous_session_token: str | None = None
+    if not user:
+        anonymous_session = get_or_create_anonymous_session(db, x_anonymous_session_token)
+        anonymous_session_token = anonymous_session.session_token
+
+    conversation = get_or_create_conversation(
+        db,
+        request.conversation_id,
+        organization_id=organization.id,
+        user_id=user.id if user else None,
+        anonymous_session_id=anonymous_session.id if anonymous_session else None,
+    )
+    _require_chat_conversation_access(db, http_request, conversation, anonymous_session)
+    add_message(
+        db,
+        conversation_id=conversation.id,
+        role="user",
+        content=request.message,
+        user_id=user.id if user else None,
+        anonymous_session_id=anonymous_session.id if anonymous_session else None,
+    )
     conversation_with_messages = get_conversation_with_messages(db, conversation.id)
     existing_lead = get_latest_lead_for_conversation(db, conversation.id)
     model_provider, model_name = default_model_metadata()
 
     agent_run = AgentRun(
         conversation_id=conversation.id,
+        organization_id=organization.id,
+        user_id=user.id if user else None,
+        anonymous_session_id=anonymous_session.id if anonymous_session else None,
         user_message=request.message,
         status="success",
         model_provider=model_provider,
@@ -63,6 +115,9 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
         "conversation_id": conversation.id,
         "agent_run_id": agent_run.id,
         "user_message": request.message,
+        "organization_id": organization.id,
+        "user_id": user.id if user else None,
+        "anonymous_session_id": anonymous_session.id if anonymous_session else None,
         "conversation_history": [
             {
                 "role": message.role,
@@ -134,52 +189,55 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
     db.add(agent_run)
     db.commit()
 
-    add_message(db, conversation_id=conversation.id, role="assistant", content=final_state["final_response"])
+    add_message(
+        db,
+        conversation_id=conversation.id,
+        role="assistant",
+        content=final_state["final_response"],
+        user_id=user.id if user else None,
+        anonymous_session_id=anonymous_session.id if anonymous_session else None,
+    )
     persist_trace_events(db, agent_run.id, final_state.get("trace", []))
+    can_view_internal_data = _can_return_trace(db, user, organization.id, settings.auth_enabled)
+    trace = final_state.get("trace", []) if can_view_internal_data else []
+    lead_info = {
+        **(final_state.get("lead_info") or {}),
+        "lead_score": final_state.get("lead_score"),
+        "lead_quality": final_state.get("lead_quality"),
+    } if can_view_internal_data else {}
 
     return ChatResponse(
         conversation_id=conversation.id,
         agent_run_id=agent_run.id,
         intent=final_state.get("intent") or "unknown",
         requires_human_approval=bool(final_state.get("requires_human_approval")),
-        lead_info={
-            **(final_state.get("lead_info") or {}),
-            "lead_score": final_state.get("lead_score"),
-            "lead_quality": final_state.get("lead_quality"),
-        },
+        lead_info=lead_info,
         final_response=final_state["final_response"],
-        trace=final_state.get("trace", []),
+        trace=trace,
+        anonymous_session_token=anonymous_session_token,
+        total_latency_ms=agent_run.total_latency_ms if can_view_internal_data else None,
+        total_model_calls=agent_run.total_model_calls if can_view_internal_data else None,
+        model_provider=agent_run.model_provider if can_view_internal_data else None,
+        model_name=agent_run.model_name if can_view_internal_data else None,
     )
 
 
 @router.get("/conversations/{conversation_id}")
-async def get_conversation(conversation_id: str, db: Session = Depends(get_db)) -> dict:
+async def get_conversation(conversation_id: str, request: Request, db: Session = Depends(get_db)) -> dict:
     conversation = get_conversation_with_messages(db, conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found.")
+    require_conversation_access(db, request, conversation)
 
-    latest_lead = get_latest_lead_for_conversation(db, conversation_id)
-    conversation_data = {
-        "id": conversation.id,
-        "status": conversation.status,
-        "created_at": conversation.created_at.isoformat(),
-        "updated_at": conversation.updated_at.isoformat(),
-    }
-    messages = [_message_to_dict(message) for message in conversation.messages]
-
-    return {
-        **conversation_data,
-        "messages": messages,
-        "conversation": conversation_data,
-        "latest_lead": lead_to_dict(latest_lead),
-    }
+    return _conversation_detail(db, conversation)
 
 
 @router.get("/agent-runs/{agent_run_id}/trace")
-async def get_agent_run_trace(agent_run_id: str, db: Session = Depends(get_db)) -> dict:
+async def get_agent_run_trace(agent_run_id: str, request: Request, db: Session = Depends(get_db)) -> dict:
     agent_run = db.get(AgentRun, agent_run_id)
     if not agent_run:
         raise HTTPException(status_code=404, detail="Agent run not found.")
+    require_admin_read(db, request)
 
     statement = (
         select(AgentTraceEvent)
@@ -212,12 +270,14 @@ async def get_agent_run_trace(agent_run_id: str, db: Session = Depends(get_db)) 
 
 
 @router.get("/leads")
-async def get_leads(db: Session = Depends(get_db)) -> dict:
+async def get_leads(request: Request, db: Session = Depends(get_db)) -> dict:
+    require_admin_read(db, request)
     return {"leads": [lead_to_dict(lead) for lead in list_leads(db)]}
 
 
 @router.get("/conversations")
-async def get_conversations(db: Session = Depends(get_db), limit: int = 25) -> dict:
+async def get_conversations(request: Request, db: Session = Depends(get_db), limit: int = 25) -> dict:
+    require_admin_read(db, request)
     limit = min(max(limit, 1), 100)
     statement = select(Conversation).order_by(Conversation.updated_at.desc()).limit(limit)
     conversations = db.scalars(statement).all()
@@ -231,10 +291,11 @@ async def get_conversations(db: Session = Depends(get_db), limit: int = 25) -> d
 
 
 @router.get("/conversations/{conversation_id}/agent-runs")
-async def get_conversation_agent_runs(conversation_id: str, db: Session = Depends(get_db)) -> dict:
+async def get_conversation_agent_runs(conversation_id: str, request: Request, db: Session = Depends(get_db)) -> dict:
     conversation = db.get(Conversation, conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found.")
+    require_conversation_access(db, request, conversation)
 
     statement = (
         select(AgentRun)
@@ -249,7 +310,8 @@ async def get_conversation_agent_runs(conversation_id: str, db: Session = Depend
 
 
 @router.get("/agent-runs")
-async def get_agent_runs(db: Session = Depends(get_db), limit: int = 25) -> dict:
+async def get_agent_runs(request: Request, db: Session = Depends(get_db), limit: int = 25) -> dict:
+    require_admin_read(db, request)
     limit = min(max(limit, 1), 100)
     statement = select(AgentRun).order_by(AgentRun.started_at.desc()).limit(limit)
     agent_runs = db.scalars(statement).all()
@@ -257,7 +319,8 @@ async def get_agent_runs(db: Session = Depends(get_db), limit: int = 25) -> dict
 
 
 @router.get("/dashboard/summary")
-async def get_dashboard_summary(db: Session = Depends(get_db)) -> dict:
+async def get_dashboard_summary(request: Request, db: Session = Depends(get_db)) -> dict:
+    require_admin_read(db, request)
     recent_statement = select(AgentRun).order_by(AgentRun.started_at.desc()).limit(5)
     recent_agent_runs = db.scalars(recent_statement).all()
 
@@ -275,52 +338,109 @@ async def get_dashboard_summary(db: Session = Depends(get_db)) -> dict:
 
 
 @router.post("/documents/ingest-demo")
-async def ingest_demo_documents(db: Session = Depends(get_db)) -> dict:
+async def ingest_demo_documents(request: Request, db: Session = Depends(get_db)) -> dict:
+    require_admin_write(db, request)
     try:
-        return ingest_documents(db, default_demo_data_dir(), clear_existing=True)
+        result = ingest_documents(db, default_demo_data_dir(), clear_existing=True)
+        invalidate_rag_index()
+        return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Document ingestion failed: {exc}") from exc
 
 
 @router.get("/documents")
-async def get_documents(db: Session = Depends(get_db)) -> dict:
+async def get_documents(request: Request, db: Session = Depends(get_db)) -> dict:
+    require_admin_read(db, request)
     return {"documents": list_documents_with_chunk_counts(db)}
 
 
 @router.post("/rag/search")
-async def rag_search(request: RagSearchRequest, db: Session = Depends(get_db)) -> dict:
+async def rag_search(rag_request: RagSearchRequest, request: Request, db: Session = Depends(get_db)) -> dict:
+    require_admin_read(db, request)
     try:
-        return {"query": request.query, "results": search_docs(db, request.query, top_k=request.top_k)}
+        return {"query": rag_request.query, "results": search_docs(db, rag_request.query, top_k=rag_request.top_k)}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"RAG search failed: {exc}") from exc
 
 
 @router.get("/approvals")
-async def get_approvals(db: Session = Depends(get_db)) -> dict:
+async def get_approvals(request: Request, db: Session = Depends(get_db)) -> dict:
+    require_admin_read(db, request)
     statement = select(HumanApproval).order_by(HumanApproval.created_at.desc())
     approvals = db.scalars(statement).all()
     return {"approvals": [_approval_to_dict(approval) for approval in approvals]}
 
 
 @router.get("/evals/cases")
-async def get_eval_cases() -> dict:
+async def get_eval_cases(request: Request, db: Session = Depends(get_db)) -> dict:
+    require_admin_read(db, request)
     return {"cases": load_eval_cases()}
 
 
 @router.get("/evals/latest")
-async def get_latest_eval_results() -> dict:
+async def get_latest_eval_results(request: Request, db: Session = Depends(get_db)) -> dict:
+    require_admin_read(db, request)
     return read_latest_eval_results()
 
 
 @router.post("/evals/run")
-async def run_evals(db: Session = Depends(get_db)) -> dict:
+async def run_evals(request: Request, db: Session = Depends(get_db)) -> dict:
     settings = get_settings()
     if settings.environment.lower() != "development":
         raise HTTPException(
             status_code=403,
             detail="Eval runs are only allowed when ENVIRONMENT=development.",
         )
+    require_admin_write(db, request)
     return run_all_evals(db=db, persist_results=True)
+
+
+@router.get("/performance/recent")
+async def get_recent_performance(request: Request, db: Session = Depends(get_db), limit: int = 25) -> dict:
+    require_admin_read(db, request)
+    return recent_performance(db, limit=limit)
+
+
+@router.post("/my/conversations/new")
+async def create_my_conversation(request: Request, db: Session = Depends(get_db)) -> dict:
+    user = get_current_user_required(request, db)
+    organization = get_or_create_default_organization(db)
+    conversation = get_or_create_conversation(db, organization_id=organization.id, user_id=user.id)
+    return {"conversation": _conversation_summary_to_dict(db, conversation)}
+
+
+@router.get("/my/conversations")
+async def get_my_conversations(request: Request, db: Session = Depends(get_db)) -> dict:
+    user = get_current_user_required(request, db)
+    statement = select(Conversation).where(Conversation.user_id == user.id).order_by(Conversation.updated_at.desc())
+    conversations = db.scalars(statement).all()
+    return {"conversations": [_conversation_summary_to_dict(db, conversation) for conversation in conversations]}
+
+
+@router.get("/my/conversations/{conversation_id}")
+async def get_my_conversation(conversation_id: str, request: Request, db: Session = Depends(get_db)) -> dict:
+    user = get_current_user_required(request, db)
+    conversation = get_conversation_with_messages(db, conversation_id)
+    if not conversation or conversation.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    return _conversation_detail(db, conversation)
+
+
+@router.get("/guest/conversations")
+async def get_guest_conversations(
+    db: Session = Depends(get_db),
+    x_anonymous_session_token: str | None = Header(default=None, alias="X-Anonymous-Session-Token"),
+) -> dict:
+    session = get_anonymous_session_by_token(db, x_anonymous_session_token)
+    if not session:
+        raise HTTPException(status_code=401, detail="Anonymous session token required.")
+    statement = (
+        select(Conversation)
+        .where(Conversation.anonymous_session_id == session.id)
+        .order_by(Conversation.updated_at.desc())
+    )
+    conversations = db.scalars(statement).all()
+    return {"conversations": [_conversation_summary_to_dict(db, conversation) for conversation in conversations]}
 
 
 def _message_to_dict(message: Any) -> dict:
@@ -330,6 +450,22 @@ def _message_to_dict(message: Any) -> dict:
         "role": message.role,
         "content": message.content,
         "created_at": message.created_at.isoformat(),
+    }
+
+
+def _conversation_detail(db: Session, conversation: Conversation) -> dict:
+    latest_lead = get_latest_lead_for_conversation(db, conversation.id)
+    conversation_data = {
+        "id": conversation.id,
+        "status": conversation.status,
+        "created_at": conversation.created_at.isoformat(),
+        "updated_at": conversation.updated_at.isoformat(),
+    }
+    return {
+        **conversation_data,
+        "messages": [_message_to_dict(message) for message in conversation.messages],
+        "conversation": conversation_data,
+        "latest_lead": lead_to_dict(latest_lead),
     }
 
 
@@ -417,3 +553,45 @@ def _count_leads_by_quality(db: Session, quality: str) -> int:
 
 def _count_pending_approvals(db: Session) -> int:
     return int(db.scalar(select(func.count()).select_from(HumanApproval).where(HumanApproval.status == "pending")) or 0)
+
+
+def _require_chat_conversation_access(
+    db: Session,
+    request: Request,
+    conversation: Conversation,
+    anonymous_session: AnonymousSession | None,
+) -> None:
+    settings = get_settings()
+    if not settings.auth_enabled:
+        return
+    user = get_current_user_optional(request, db)
+    if user and conversation.user_id == user.id:
+        return
+    if anonymous_session and conversation.anonymous_session_id == anonymous_session.id:
+        return
+    organization_id = conversation.organization_id or get_or_create_default_organization(db).id
+    if user_has_org_role(db, user, organization_id, ADMIN_READ_ROLES):
+        return
+    raise HTTPException(status_code=403, detail="You cannot continue this conversation.")
+
+
+def _can_return_trace(db: Session, user, organization_id: str, auth_enabled: bool) -> bool:
+    if not auth_enabled:
+        return True
+    return user_has_org_role(db, user, organization_id, ADMIN_READ_ROLES)
+
+
+def _database_connected(db: Session) -> bool:
+    try:
+        db.execute(select(1))
+        return True
+    except SQLAlchemyError:
+        return False
+
+
+def _database_kind(database_url: str) -> str:
+    if database_url.startswith("sqlite"):
+        return "sqlite"
+    if database_url.startswith(("postgresql", "postgres")):
+        return "postgres"
+    return "other"

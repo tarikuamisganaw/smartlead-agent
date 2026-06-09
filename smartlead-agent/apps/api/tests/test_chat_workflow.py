@@ -24,13 +24,16 @@ async def test_lead_inquiry_workflow() -> None:
 
 @pytest.mark.anyio
 async def test_pricing_question_workflow() -> None:
-    response = await post_chat("How much does SEO cost?")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/chat", json={"message": "How much does SEO cost?"})
+        body = response.json()
+        trace_response = await client.get(f"/agent-runs/{body['agent_run_id']}/trace")
 
-    body = response.json()
+    trace_events = body["trace"] or trace_response.json()["trace"]
 
     assert response.status_code == 200
     assert body["intent"] == "pricing_question"
-    assert any(event["node_name"] == "rag_node" and event["status"] == "success" for event in body["trace"])
+    assert any(event["node_name"] == "rag_node" and event["status"] == "success" for event in trace_events)
     assert body["final_response"]
 
 

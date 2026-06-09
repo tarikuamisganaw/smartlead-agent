@@ -5,6 +5,9 @@ class AgentState(TypedDict):
     conversation_id: str
     agent_run_id: str
     user_message: str
+    organization_id: str | None
+    user_id: str | None
+    anonymous_session_id: str | None
     conversation_history: list[dict]
     existing_lead: dict | None
     intent: str | None

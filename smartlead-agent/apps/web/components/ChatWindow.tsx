@@ -1,17 +1,22 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import AgentRunSummary from "@/components/AgentRunSummary";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import ChatSidebar from "@/components/ChatSidebar";
 import ErrorState from "@/components/ErrorState";
-import LeadInfoCard from "@/components/LeadInfoCard";
 import LoadingState from "@/components/LoadingState";
 import MessageBubble from "@/components/MessageBubble";
 import StatusBadge from "@/components/StatusBadge";
-import TracePreview from "@/components/TracePreview";
-import { healthCheck, sendChatMessage } from "@/lib/api";
-import type { ChatMessage, ChatResponse } from "@/lib/types";
-import { hasMeaningfulValue } from "@/lib/utils";
+import {
+  createMyConversation,
+  getAccessToken,
+  getMyConversations,
+  healthCheck,
+  sendChatMessage,
+  setAnonymousSessionToken,
+} from "@/lib/api";
+import type { ChatMessage, ChatMessageRecord, ConversationListItem } from "@/lib/types";
+import { cx } from "@/lib/utils";
 
 const examples = [
   "How much does SEO cost?",
@@ -21,11 +26,24 @@ const examples = [
   "What happens after a lead is captured?",
 ];
 
-export default function ChatWindow() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+type ChatWindowProps = {
+  initialConversationId?: string;
+  initialMessages?: ChatMessageRecord[];
+};
+
+export default function ChatWindow({ initialConversationId, initialMessages = [] }: ChatWindowProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    initialMessages.map((message) => ({ id: message.id, role: message.role, content: message.content })),
+  );
   const [input, setInput] = useState("");
-  const [conversationId, setConversationId] = useState<string | undefined>();
-  const [latestResponse, setLatestResponse] = useState<ChatResponse | null>(null);
+  const [conversationId, setConversationId] = useState<string | undefined>(initialConversationId);
+  const [isSignedIn, setIsSignedIn] = useState(false);
+  const [conversations, setConversations] = useState<ConversationListItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [creatingChat, setCreatingChat] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "offline">("checking");
@@ -38,17 +56,35 @@ export default function ChatWindow() {
   }, []);
 
   useEffect(() => {
+    if (conversationId) {
+      window.localStorage.setItem("smartlead_current_conversation_id", conversationId);
+    }
+  }, [conversationId]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, isLoading]);
 
-  const hasLeadInfo = useMemo(() => {
-    if (!latestResponse?.lead_info) {
-      return false;
+  useEffect(() => {
+    const signedIn = Boolean(getAccessToken());
+    setIsSignedIn(signedIn);
+    if (signedIn) {
+      void loadConversationHistory();
     }
-    return Object.entries(latestResponse.lead_info).some(
-      ([key, value]) => !["missing_fields", "lead_score", "lead_quality"].includes(key) && hasMeaningfulValue(value),
-    );
-  }, [latestResponse]);
+  }, []);
+
+  async function loadConversationHistory() {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const response = await getMyConversations();
+      setConversations(response.conversations);
+    } catch (caught) {
+      setHistoryError(caught instanceof Error ? caught.message : "Could not load chat history.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
 
   async function submitMessage(messageText: string) {
     const trimmed = messageText.trim();
@@ -72,8 +108,10 @@ export default function ChatWindow() {
         message: trimmed,
         conversation_id: conversationId,
       });
+      if (response.anonymous_session_token) {
+        setAnonymousSessionToken(response.anonymous_session_token);
+      }
       setConversationId(response.conversation_id);
-      setLatestResponse(response);
       setMessages((current) => [
         ...current,
         {
@@ -83,6 +121,12 @@ export default function ChatWindow() {
           response,
         },
       ]);
+      if (isSignedIn) {
+        await loadConversationHistory();
+        if (pathname === "/" || pathname === "/chats") {
+          router.replace(`/chats/${response.conversation_id}`);
+        }
+      }
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Chat request failed.";
       setError(message);
@@ -96,32 +140,47 @@ export default function ChatWindow() {
     void submitMessage(input);
   }
 
-  function resetConversation() {
-    setMessages([]);
-    setInput("");
-    setConversationId(undefined);
-    setLatestResponse(null);
+  async function startNewChat() {
+    if (!isSignedIn || creatingChat) {
+      return;
+    }
+    setCreatingChat(true);
     setError(null);
+    try {
+      const response = await createMyConversation();
+      setMessages([]);
+      setInput("");
+      setConversationId(response.conversation.id);
+      await loadConversationHistory();
+      router.push(`/chats/${response.conversation.id}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not create a new chat.");
+    } finally {
+      setCreatingChat(false);
+    }
   }
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+    <div className={cx("grid gap-5", isSignedIn ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "")}>
+      {isSignedIn ? (
+        <ChatSidebar
+          activeConversationId={conversationId}
+          conversations={conversations}
+          loading={historyLoading}
+          error={historyError}
+          creating={creatingChat}
+          onNewChat={() => void startNewChat()}
+        />
+      ) : null}
       <section className="rounded-md border border-line bg-white shadow-soft">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
           <div className="flex items-center gap-2">
             <StatusBadge
               value={backendStatus === "connected" ? "success" : backendStatus === "offline" ? "failed" : "pending"}
-              label={backendStatus === "connected" ? "Connected" : backendStatus === "offline" ? "Not connected" : "Checking"}
+              label={backendStatus === "connected" ? "Online" : backendStatus === "offline" ? "Offline" : "Checking"}
             />
-            {conversationId ? <span className="text-xs text-ink/50">Conversation {conversationId}</span> : null}
+            <span className="text-sm font-semibold text-ink">SmartLead Assistant</span>
           </div>
-          <button
-            type="button"
-            onClick={resetConversation}
-            className="rounded-md border border-line bg-panel px-3 py-1.5 text-sm font-medium text-ink transition hover:border-brand hover:text-brand"
-          >
-            Reset conversation
-          </button>
         </div>
 
         {backendStatus === "offline" ? (
@@ -130,7 +189,7 @@ export default function ChatWindow() {
           </div>
         ) : null}
 
-        <div className="flex min-h-[520px] flex-col">
+        <div className="flex min-h-[620px] flex-col">
           <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5">
             {messages.length === 0 ? (
               <div className="rounded-md border border-dashed border-line bg-panel p-4 text-sm leading-6 text-ink/65">
@@ -141,7 +200,7 @@ export default function ChatWindow() {
             {messages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
-            {isLoading ? <LoadingState label="Running agent workflow..." /> : null}
+            {isLoading ? <LoadingState label="Thinking..." /> : null}
             {error ? <ErrorState message={error} /> : null}
             <div ref={bottomRef} />
           </div>
@@ -164,7 +223,7 @@ export default function ChatWindow() {
               <input
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                placeholder="Type a customer message..."
+                placeholder="Ask a question..."
                 className="min-h-11 flex-1 rounded-md border border-line bg-white px-3 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
               <button
@@ -178,38 +237,6 @@ export default function ChatWindow() {
           </div>
         </div>
       </section>
-
-      <aside className="space-y-4">
-        {latestResponse ? (
-          <>
-            <AgentRunSummary response={latestResponse} />
-            <LeadInfoCard leadInfo={latestResponse.lead_info} />
-            <TracePreview trace={latestResponse.trace} />
-            <div className="rounded-md border border-line bg-white p-4">
-              <h2 className="text-sm font-semibold text-ink">Links</h2>
-              <div className="mt-3 grid gap-2 text-sm">
-                <Link className="text-brand hover:underline" href={`/dashboard/traces/${latestResponse.agent_run_id}`}>
-                  View full trace
-                </Link>
-                {hasLeadInfo ? (
-                  <Link className="text-brand hover:underline" href="/dashboard/leads">
-                    View leads
-                  </Link>
-                ) : null}
-                {latestResponse.requires_human_approval ? (
-                  <Link className="text-brand hover:underline" href="/dashboard/approvals">
-                    View approvals
-                  </Link>
-                ) : null}
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="rounded-md border border-line bg-white p-4 text-sm leading-6 text-ink/65">
-            Agent run details appear here after the first response.
-          </div>
-        )}
-      </aside>
     </div>
   );
 }

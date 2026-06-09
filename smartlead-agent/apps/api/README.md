@@ -2,7 +2,7 @@
 
 Backend foundation for SmartLead Agent, a production-style AI website assistant for small businesses.
 
-Week 4A keeps mock mode for deterministic local development and tests, includes optional Gemini LLM provider support, exposes dashboard-friendly read endpoints, and adds an evaluation suite with latency/cost tracking. It still does not include auth, real email/Slack, Google Sheets, CRM, or real notifications.
+Week 4B keeps mock mode for deterministic local development and tests, includes optional Gemini LLM provider support, exposes dashboard-friendly read endpoints, adds an evaluation suite with latency/cost tracking, caches local RAG retrieval, and adds an auth/RBAC foundation. It still does not include real email/Slack, Google Sheets, CRM, payment, deployment, or real notifications.
 
 ## Install
 
@@ -44,6 +44,24 @@ pytest
 ```
 
 Tests use mock mode by default and do not require `GEMINI_API_KEY`.
+
+## Auth Setup
+
+Auth should be enabled when testing the guest/user/owner flow:
+
+```env
+AUTH_ENABLED=true
+JWT_SECRET_KEY=dev-secret-change-me
+DEFAULT_ORGANIZATION_NAME=BrightPath Marketing Agency
+```
+
+When `AUTH_ENABLED=true`, dashboard/admin endpoints require the `owner` role. Register a demo owner:
+
+```bash
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"owner@example.com","password":"password123","full_name":"Owner","as_owner":true}'
+```
 
 ## Run Evals
 
@@ -108,6 +126,16 @@ If `gemini-3.5-flash` is unavailable for your account, set `GEMINI_MODEL` to ano
 - `GET /evals/cases`
 - `GET /evals/latest`
 - `POST /evals/run`
+- `GET /performance/recent`
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /auth/me`
+- `POST /auth/anonymous-session`
+- `POST /auth/claim-anonymous-session`
+- `GET /my/conversations`
+- `GET /my/conversations/{conversation_id}`
+- `POST /my/conversations/new`
+- `GET /guest/conversations`
 
 ## Example Requests
 
@@ -211,6 +239,13 @@ Run evals in development:
 curl -X POST http://localhost:8000/evals/run
 ```
 
+Performance diagnostics:
+
+```bash
+curl http://localhost:8000/performance/recent
+BACKEND_URL=http://localhost:8000 python -m app.scripts.performance_smoke_test
+```
+
 ## How Local RAG Works
 
 Markdown files from `data/demo_business` are loaded into `Document` records, split into `DocumentChunk` records, and searched locally. The preferred path uses `sklearn` TF-IDF and cosine similarity. A pure-Python TF-IDF-style fallback is included so the app still runs without external API keys.
@@ -238,6 +273,27 @@ The eval suite tracks:
 
 `POST /evals/run` is allowed only when `ENVIRONMENT=development`.
 
+## Resetting The Local Dev Database
+
+Use this only for local development if schema changes from Week 4B cause SQLite issues:
+
+```bash
+cd apps/api
+python -m app.scripts.reset_dev_db --yes
+```
+
+The script:
+
+- Refuses to run in production
+- Requires `--yes`
+- Backs up the SQLite database before deleting data
+- Drops and recreates tables
+- Creates the default organization
+- Optionally creates a demo owner if `DEMO_OWNER_EMAIL` and `DEMO_OWNER_PASSWORD` are set
+- Re-ingests demo documents
+
+Do not use this against production or client data.
+
 ## Configuration
 
 The app uses SQLite by default:
@@ -247,6 +303,8 @@ sqlite:///./smartlead_agent.db
 ```
 
 Set `DATABASE_URL` to point at another SQLAlchemy-supported database later, such as Postgres or Supabase.
+
+SQLite is not recommended for deployed user/chat/lead/trace data. Deployment will be handled later; this phase only keeps `DATABASE_URL` configurable.
 
 ## Still Mocked
 

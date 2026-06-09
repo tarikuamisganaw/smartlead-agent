@@ -26,6 +26,11 @@ class ChatResponse(BaseModel):
     lead_info: dict
     final_response: str
     trace: list[dict]
+    anonymous_session_token: str | None = None
+    total_latency_ms: int | None = None
+    total_model_calls: int | None = None
+    model_provider: str | None = None
+    model_name: str | None = None
 
 
 class RagSearchRequest(BaseModel):
@@ -96,3 +101,49 @@ class LeadResponse(BaseModel):
     lead_quality: str | None
     status: str
     created_at: str
+
+
+class AuthRegisterRequest(BaseModel):
+    email: str = Field(..., min_length=3)
+    password: str = Field(..., min_length=8)
+    full_name: str | None = None
+    as_owner: bool = False
+
+
+class AuthLoginRequest(BaseModel):
+    email: str = Field(..., min_length=3)
+    password: str = Field(..., min_length=1)
+
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    full_name: str | None = None
+    is_active: bool
+    created_at: str
+
+
+class MembershipResponse(BaseModel):
+    organization_id: str
+    organization_name: str
+    role: str
+
+
+class AuthTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
+
+class AuthMeResponse(BaseModel):
+    user: UserResponse
+    memberships: list[MembershipResponse]
+
+
+class AnonymousSessionResponse(BaseModel):
+    anonymous_session_id: str
+    session_token: str
+
+
+class ClaimAnonymousSessionRequest(BaseModel):
+    session_token: str = Field(..., min_length=16)

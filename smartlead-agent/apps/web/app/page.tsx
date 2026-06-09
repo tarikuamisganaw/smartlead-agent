@@ -1,4 +1,5 @@
 import ChatWindow from "@/components/ChatWindow";
+import AuthStatus from "@/components/AuthStatus";
 
 export default function HomePage() {
   return (
@@ -14,12 +15,7 @@ export default function HomePage() {
                 AI website assistant that answers from business documents, qualifies leads, saves leads, and flags risky requests for human approval.
               </p>
             </div>
-            <a
-              href="/dashboard"
-              className="rounded-md border border-line bg-white px-4 py-2 text-sm font-medium text-ink shadow-sm transition hover:border-brand hover:text-brand"
-            >
-              Dashboard
-            </a>
+            <AuthStatus />
           </div>
         </header>
         <ChatWindow />

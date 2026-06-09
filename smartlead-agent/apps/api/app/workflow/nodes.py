@@ -211,6 +211,9 @@ def action_node(state: AgentState, db: Session) -> AgentState:
                 lead_info=lead_info,
                 lead_score=state.get("lead_score"),
                 lead_quality=state.get("lead_quality"),
+                organization_id=state.get("organization_id"),
+                user_id=state.get("user_id"),
+                anonymous_session_id=state.get("anonymous_session_id"),
             )
             lead_latency = now_ms(lead_started)
             lead_info["id"] = lead.id
@@ -239,6 +242,7 @@ def action_node(state: AgentState, db: Session) -> AgentState:
             action_type = _approval_action_type(state["user_message"])
             approval = HumanApproval(
                 agent_run_id=state["agent_run_id"],
+                organization_id=state.get("organization_id"),
                 action_type=action_type,
                 reason=state.get("approval_reason") or "Human review required.",
                 draft_response="Special requests require team review before approval.",
@@ -380,7 +384,7 @@ def _should_extract_lead_info(state: AgentState) -> bool:
         return True
     if intent == "pricing_question":
         lowered = state["user_message"].lower()
-        return any(keyword in lowered for keyword in ("seo", "website", "ads", "marketing", "automation", "budget", "$"))
+        return any(keyword in lowered for keyword in ("budget", "$", "email", "phone", "my name is", "i am", "i'm"))
     if _message_has_lead_fields(state["user_message"]):
         return True
     return False
