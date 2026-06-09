@@ -11,8 +11,10 @@ import type {
   DocumentInfo,
   EvalCase,
   EvalRunResults,
+  IntegrationStatus,
   LatestEvalResponse,
   Lead,
+  LeadSyncResponse,
   RagResult,
   AuthTokenResponse,
   AuthMeResponse,
@@ -137,6 +139,16 @@ export function getDashboardSummary() {
 
 export function getLeads() {
   return request<{ leads: Lead[] }>("/leads");
+}
+
+export function syncLead(leadId: string) {
+  return request<LeadSyncResponse>(`/leads/${leadId}/sync`, {
+    method: "POST",
+  });
+}
+
+export function getIntegrationStatus() {
+  return request<IntegrationStatus>("/integrations/status");
 }
 
 export function getApprovals() {

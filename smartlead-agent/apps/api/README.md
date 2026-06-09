@@ -2,7 +2,7 @@
 
 Backend foundation for SmartLead Agent, a production-style AI website assistant for small businesses.
 
-Week 4B keeps mock mode for deterministic local development and tests, includes optional Gemini LLM provider support, exposes dashboard-friendly read endpoints, adds an evaluation suite with latency/cost tracking, caches local RAG retrieval, and adds an auth/RBAC foundation. It still does not include real email/Slack, Google Sheets, CRM, payment, deployment, or real notifications.
+Week 4C keeps mock mode for deterministic local development and tests, includes optional Gemini LLM provider support, exposes dashboard-friendly read endpoints, adds an evaluation suite with latency/cost tracking, caches local RAG retrieval, adds an auth/RBAC foundation, and adds provider-based lead sync with a mock provider plus optional Google Sheets support. It still does not include real email/Slack notifications, CRM, payment, deployment, or production auth hardening.
 
 ## Install
 
@@ -44,6 +44,8 @@ pytest
 ```
 
 Tests use mock mode by default and do not require `GEMINI_API_KEY`.
+
+The integration tests also default to mock lead sync and do not call Google Sheets.
 
 ## Auth Setup
 
@@ -108,6 +110,35 @@ export ESTIMATED_OUTPUT_COST_PER_1M_TOKENS=0
 
 If `gemini-3.5-flash` is unavailable for your account, set `GEMINI_MODEL` to another Gemini Flash model. If Gemini fails during `/chat`, the workflow falls back to mock behavior and records the fallback in trace output.
 
+## Lead Sync Providers
+
+Lead sync is provider based. The default is safe local mock mode:
+
+```env
+LEAD_SYNC_PROVIDER=mock
+SYNC_LEADS_AUTOMATICALLY=true
+SYNC_ONLY_COMPLETE_LEADS=false
+```
+
+To sync leads to Google Sheets, keep your service-account JSON out of git, share the target sheet with the service-account email, and place the JSON as a single-line env value:
+
+```env
+LEAD_SYNC_PROVIDER=google_sheets
+GOOGLE_SHEETS_CREDENTIALS_JSON={"type":"service_account","project_id":"..."}
+GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id
+GOOGLE_SHEETS_WORKSHEET_NAME=Leads
+```
+
+The spreadsheet ID is the long value in the sheet URL between `/d/` and `/edit`.
+
+Google Sheets sync appends a row the first time and updates the saved row range on later sync attempts when possible. If Google Sheets is missing or unavailable, `/chat` still returns normally; the lead keeps a local `external_sync_status` such as `not_configured` or `failed`.
+
+Slack and email notification providers are status placeholders for later phases:
+
+```env
+NOTIFICATION_PROVIDER=mock
+```
+
 ## Endpoints
 
 - `GET /health`
@@ -119,6 +150,8 @@ If `gemini-3.5-flash` is unavailable for your account, set `GEMINI_MODEL` to ano
 - `GET /agent-runs`
 - `GET /agent-runs/{agent_run_id}/trace`
 - `GET /leads`
+- `POST /leads/{lead_id}/sync`
+- `GET /integrations/status`
 - `GET /approvals`
 - `POST /documents/ingest-demo`
 - `GET /documents`
@@ -213,6 +246,18 @@ Leads:
 
 ```bash
 curl http://localhost:8000/leads
+```
+
+Manual lead sync:
+
+```bash
+curl -X POST http://localhost:8000/leads/{lead_id}/sync
+```
+
+Integration status:
+
+```bash
+curl http://localhost:8000/integrations/status
 ```
 
 Approvals:
@@ -310,6 +355,7 @@ SQLite is not recommended for deployed user/chat/lead/trace data. Deployment wil
 
 - Owner notification
 - Follow-up draft sending
-- Slack, email, Google Sheets, and CRM integrations
+- Slack and email delivery
+- CRM integrations
 
-The RAG retrieval is real and local. Intent classification, lead extraction, and response generation are mocked in `MODEL_PROVIDER=mock` and Gemini-backed in `MODEL_PROVIDER=gemini`.
+The RAG retrieval is real and local. Lead sync can be real with Google Sheets when configured. Intent classification, lead extraction, and response generation are mocked in `MODEL_PROVIDER=mock` and Gemini-backed in `MODEL_PROVIDER=gemini`.

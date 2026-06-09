@@ -46,6 +46,40 @@ export type Lead = {
   lead_quality?: string | null;
   status?: string;
   created_at?: string;
+  external_sync_status?: string | null;
+  external_sync_provider?: string | null;
+  external_sync_id?: string | null;
+  external_synced_at?: string | null;
+  external_sync_error?: string | null;
+  last_sync_attempt_at?: string | null;
+};
+
+export type LeadSyncResponse = {
+  lead: Lead;
+  sync_result: {
+    status: string;
+    provider?: string;
+    external_id?: string | null;
+    message?: string;
+  };
+};
+
+export type IntegrationStatus = {
+  lead_sync: {
+    provider: string;
+    configured: boolean;
+    automatic: boolean;
+    sync_only_complete_leads: boolean;
+    google_sheets: {
+      credentials_configured: boolean;
+      spreadsheet_configured: boolean;
+      worksheet_name: string;
+    };
+  };
+  notification: {
+    provider: string;
+    configured: boolean;
+  };
 };
 
 export type AgentRun = {

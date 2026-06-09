@@ -1,13 +1,20 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import LeadSyncStatusBadge from "@/components/LeadSyncStatusBadge";
 import StatusBadge from "@/components/StatusBadge";
 import type { Lead } from "@/lib/types";
-import { formatDateTime, formatMoney, shortId } from "@/lib/utils";
+import { cx, formatDateTime, formatMoney, shortId } from "@/lib/utils";
 
-export default function LeadsTable({ leads }: { leads: Lead[] }) {
+type LeadsTableProps = {
+  leads: Lead[];
+  syncingLeadId?: string | null;
+  onSync?: (leadId: string) => void;
+};
+
+export default function LeadsTable({ leads, syncingLeadId, onSync }: LeadsTableProps) {
   return (
     <div className="overflow-x-auto rounded-md border border-line bg-white shadow-sm">
-      <table className="min-w-[1040px] w-full border-collapse text-left text-sm">
+      <table className="min-w-[1320px] w-full border-collapse text-left text-sm">
         <thead className="bg-panel text-xs uppercase text-ink/50">
           <tr>
             <Th>Lead</Th>
@@ -19,6 +26,10 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
             <Th>Timeline</Th>
             <Th>Score</Th>
             <Th>Status</Th>
+            <Th>Sync</Th>
+            <Th>Provider</Th>
+            <Th>Synced At</Th>
+            <Th>Sync Action</Th>
             <Th>Created</Th>
             <Th>Conversation</Th>
           </tr>
@@ -42,6 +53,31 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
                 </div>
               </Td>
               <Td>{lead.status ? <StatusBadge value={lead.status} /> : "—"}</Td>
+              <Td>
+                <div className="space-y-1">
+                  <LeadSyncStatusBadge status={lead.external_sync_status} />
+                  {lead.external_sync_error ? <p className="max-w-[220px] text-xs text-accent">{lead.external_sync_error}</p> : null}
+                </div>
+              </Td>
+              <Td>{lead.external_sync_provider || "—"}</Td>
+              <Td>{formatDateTime(lead.external_synced_at)}</Td>
+              <Td>
+                {onSync ? (
+                  <button
+                    className={cx(
+                      "h-9 rounded-md border border-line px-3 text-xs font-semibold transition",
+                      syncingLeadId === lead.id ? "cursor-wait bg-panel text-ink/45" : "bg-white text-ink hover:border-brand hover:text-brand",
+                    )}
+                    disabled={syncingLeadId === lead.id}
+                    type="button"
+                    onClick={() => onSync(lead.id)}
+                  >
+                    {syncingLeadId === lead.id ? "Syncing" : "Sync"}
+                  </button>
+                ) : (
+                  "—"
+                )}
+              </Td>
               <Td>{formatDateTime(lead.created_at)}</Td>
               <Td>
                 {lead.conversation_id ? (

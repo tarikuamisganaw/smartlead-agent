@@ -49,6 +49,12 @@ def _ensure_sqlite_compat_columns() -> None:
             "organization_id": "VARCHAR",
             "user_id": "VARCHAR",
             "anonymous_session_id": "VARCHAR",
+            "external_sync_status": "VARCHAR",
+            "external_sync_provider": "VARCHAR",
+            "external_sync_id": "VARCHAR",
+            "external_synced_at": "DATETIME",
+            "external_sync_error": "TEXT",
+            "last_sync_attempt_at": "DATETIME",
         },
         "agent_runs": {
             "organization_id": "VARCHAR",

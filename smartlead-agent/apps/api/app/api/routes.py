@@ -37,7 +37,9 @@ from app.services.document_service import (
     ingest_documents,
     list_documents_with_chunk_counts,
 )
-from app.services.lead_service import get_latest_lead_for_conversation, lead_to_dict, list_leads
+from app.services.integrations.lead_sync_provider import get_lead_sync_provider
+from app.services.integrations.notification_provider import get_notification_provider
+from app.services.lead_service import get_latest_lead_for_conversation, lead_to_dict, list_leads, sync_lead_external
 from app.services.metrics_service import collect_agent_run_metrics, default_model_metadata
 from app.services.performance_service import recent_performance
 from app.services.rag_service import search_docs
@@ -278,6 +280,43 @@ async def get_agent_run_trace(agent_run_id: str, request: Request, db: Session =
 async def get_leads(request: Request, db: Session = Depends(get_db)) -> dict:
     require_admin_read(db, request)
     return {"leads": [lead_to_dict(lead) for lead in list_leads(db)]}
+
+
+@router.post("/leads/{lead_id}/sync")
+async def sync_lead(lead_id: str, request: Request, db: Session = Depends(get_db)) -> dict:
+    require_admin_write(db, request)
+    lead = db.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found.")
+
+    result = sync_lead_external(db, lead, force=True)
+    db.refresh(lead)
+    return {"lead": lead_to_dict(lead), "sync_result": result}
+
+
+@router.get("/integrations/status")
+async def get_integrations_status(request: Request, db: Session = Depends(get_db)) -> dict:
+    require_admin_read(db, request)
+    settings = get_settings()
+    lead_sync_provider = get_lead_sync_provider()
+    notification_provider = get_notification_provider()
+    return {
+        "lead_sync": {
+            "provider": lead_sync_provider.provider_name,
+            "configured": lead_sync_provider.is_configured(),
+            "automatic": settings.sync_leads_automatically,
+            "sync_only_complete_leads": settings.sync_only_complete_leads,
+            "google_sheets": {
+                "credentials_configured": bool(settings.google_sheets_credentials_json),
+                "spreadsheet_configured": bool(settings.google_sheets_spreadsheet_id),
+                "worksheet_name": settings.google_sheets_worksheet_name,
+            },
+        },
+        "notification": {
+            "provider": notification_provider.provider_name,
+            "configured": notification_provider.is_configured(),
+        },
+    }
 
 
 @router.get("/conversations")

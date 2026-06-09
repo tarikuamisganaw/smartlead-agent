@@ -7,20 +7,46 @@ import EmptyState from "@/components/EmptyState";
 import ErrorState from "@/components/ErrorState";
 import LeadsTable from "@/components/LeadsTable";
 import LoadingState from "@/components/LoadingState";
-import { getLeads } from "@/lib/api";
+import { getLeads, syncLead } from "@/lib/api";
 import type { Lead } from "@/lib/types";
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [syncingLeadId, setSyncingLeadId] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    getLeads()
-      .then((response) => setLeads(response.leads))
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load leads."))
-      .finally(() => setLoading(false));
+    loadLeads();
   }, []);
+
+  async function loadLeads() {
+    setError(null);
+    try {
+      const response = await getLeads();
+      setLeads(response.leads);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not load leads.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSync(leadId: string) {
+    setSyncingLeadId(leadId);
+    setSyncMessage(null);
+    setError(null);
+    try {
+      const response = await syncLead(leadId);
+      setLeads((current) => current.map((lead) => (lead.id === leadId ? response.lead : lead)));
+      setSyncMessage(response.sync_result.message || `Sync status: ${response.sync_result.status}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not sync lead.");
+    } finally {
+      setSyncingLeadId(null);
+    }
+  }
 
   return (
     <DashboardLayout
@@ -35,7 +61,10 @@ export default function LeadsPage() {
       <div className="space-y-4">
         {loading ? <LoadingState label="Loading leads..." /> : null}
         {error ? <ErrorState message={error} /> : null}
-        {!loading && !error && leads.length ? <LeadsTable leads={leads} /> : null}
+        {syncMessage ? (
+          <div className="rounded-md border border-brand/20 bg-brand/5 px-4 py-3 text-sm text-brand">{syncMessage}</div>
+        ) : null}
+        {!loading && !error && leads.length ? <LeadsTable leads={leads} syncingLeadId={syncingLeadId} onSync={handleSync} /> : null}
         {!loading && !error && !leads.length ? (
           <EmptyState
             title="No leads yet."

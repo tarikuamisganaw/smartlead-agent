@@ -12,6 +12,7 @@ const links = [
   { href: "/dashboard/approvals", label: "Approvals" },
   { href: "/dashboard/documents", label: "Documents" },
   { href: "/dashboard/rag-test", label: "RAG Test" },
+  { href: "/dashboard/integrations", label: "Integrations" },
   { href: "/dashboard/evals", label: "Evals" },
 ];
 

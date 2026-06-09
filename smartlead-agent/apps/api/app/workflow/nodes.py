@@ -2,9 +2,10 @@ from time import perf_counter
 
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models import HumanApproval
 from app.services.mock_tools import create_followup_draft, create_or_update_lead_record, mock_send_owner_notification
-from app.services.lead_service import merge_lead_info, score_lead_info
+from app.services.lead_service import merge_lead_info, score_lead_info, sync_lead_external
 from app.services.llm_service import (
     LLMCallResult,
     classify_intent_with_metadata,
@@ -237,6 +238,7 @@ def action_node(state: AgentState, db: Session) -> AgentState:
             state["tool_results"].append(
                 {"tool_name": "create_or_update_lead_record", "status": "success", "lead_id": lead.id}
             )
+            _sync_lead_if_enabled(state, db, lead)
 
         if state.get("requires_human_approval"):
             action_type = _approval_action_type(state["user_message"])
@@ -423,6 +425,125 @@ def _approval_action_type(message: str) -> str:
     if any(keyword in lowered for keyword in ("guarantee", "promise results", "can you guarantee")):
         return "guarantee_request"
     return "risky_request"
+
+
+def _sync_lead_if_enabled(state: AgentState, db: Session, lead) -> None:
+    settings = get_settings()
+    if not settings.sync_leads_automatically:
+        return
+
+    provider_name = (settings.lead_sync_provider or "mock").lower().strip()
+    tool_name = f"sync_lead_{provider_name}"
+
+    if settings.sync_only_complete_leads and not (lead.email and lead.service_interest):
+        result = {
+            "status": "skipped",
+            "provider": provider_name,
+            "external_id": lead.external_sync_id,
+            "message": "Lead sync skipped because the lead is not complete yet.",
+        }
+        persist_tool_call(
+            db,
+            agent_run_id=state["agent_run_id"],
+            tool_name=tool_name,
+            tool_input=_safe_lead_sync_input(lead),
+            tool_output=result,
+            status="skipped",
+            latency_ms=0,
+        )
+        state["tool_results"].append({"tool_name": tool_name, "status": "skipped", "result": result})
+        add_trace_event_to_state(
+            state,
+            agent_name="Lead Sync Agent",
+            node_name="sync_lead_external",
+            input_summary=f"provider={provider_name}",
+            output_summary=result["message"],
+            tool_name=tool_name,
+            status="skipped",
+            latency_ms=0,
+        )
+        return
+
+    started = perf_counter()
+    try:
+        result = sync_lead_external(db, lead)
+        db.refresh(lead)
+        status = _sync_tool_status(result.get("status"))
+        output = _safe_sync_output(result)
+        persist_tool_call(
+            db,
+            agent_run_id=state["agent_run_id"],
+            tool_name=tool_name,
+            tool_input=_safe_lead_sync_input(lead),
+            tool_output=output,
+            status=status,
+            latency_ms=now_ms(started),
+        )
+        state["tool_results"].append({"tool_name": tool_name, "status": status, "result": output})
+        if state.get("lead_info") is not None:
+            state["lead_info"]["external_sync_status"] = lead.external_sync_status
+            state["lead_info"]["external_sync_provider"] = lead.external_sync_provider
+            state["lead_info"]["external_sync_id"] = lead.external_sync_id
+        add_trace_event_to_state(
+            state,
+            agent_name="Lead Sync Agent",
+            node_name="sync_lead_external",
+            input_summary=f"provider={provider_name}",
+            output_summary=f"Lead sync status={result.get('status')}; provider={result.get('provider')}.",
+            tool_name=tool_name,
+            status=status,
+            latency_ms=now_ms(started),
+        )
+    except Exception as exc:  # pragma: no cover - defensive integration path
+        db.rollback()
+        persist_tool_call(
+            db,
+            agent_run_id=state["agent_run_id"],
+            tool_name=tool_name,
+            tool_input=_safe_lead_sync_input(lead),
+            tool_output={"status": "failed", "provider": provider_name, "message": str(exc)},
+            status="failed",
+            latency_ms=now_ms(started),
+        )
+        state.setdefault("errors", []).append({"node_name": "sync_lead_external", "error": str(exc)})
+        add_trace_event_to_state(
+            state,
+            agent_name="Lead Sync Agent",
+            node_name="sync_lead_external",
+            input_summary=f"provider={provider_name}",
+            output_summary="Lead sync failed, but chat continued.",
+            tool_name=tool_name,
+            status="failed",
+            error_message=str(exc),
+            latency_ms=now_ms(started),
+        )
+
+
+def _sync_tool_status(status: str | None) -> str:
+    if status in {"synced", "mock_synced"}:
+        return "success"
+    if status == "skipped":
+        return "skipped"
+    return "failed"
+
+
+def _safe_lead_sync_input(lead) -> dict:
+    return {
+        "lead_id": lead.id,
+        "conversation_id": lead.conversation_id,
+        "has_email": bool(lead.email),
+        "service_interest": lead.service_interest,
+        "lead_quality": lead.lead_quality,
+    }
+
+
+def _safe_sync_output(result: dict) -> dict:
+    return {
+        "status": result.get("status"),
+        "provider": result.get("provider"),
+        "external_id": result.get("external_id"),
+        "message": result.get("message"),
+    }
 
 
 def _conversation_context(state: AgentState) -> str:

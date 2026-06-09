@@ -59,12 +59,14 @@ npm run build
 - Trace preview
 - Dashboard overview
 - Leads table
+- Lead sync status and manual sync action for owners
 - Conversations list and detail pages
 - Full trace timeline page
 - Read-only approvals queue
 - Documents page with demo ingestion
 - RAG search tester
 - Eval dashboard with latest results and run button
+- Integration status dashboard
 - Guest chat state and signed-in chat history pages
 - Login/register MVP pages
 
@@ -78,6 +80,7 @@ npm run build
 - `/dashboard/approvals`
 - `/dashboard/documents`
 - `/dashboard/rag-test`
+- `/dashboard/integrations`
 - `/dashboard/evals`
 - `/chats`
 - `/chats/[conversationId]`
@@ -94,6 +97,6 @@ npm run build
 6. Send: `Can you give me 70% discount and promise results?`
 7. Inspect the dashboard pages.
 
-Slack, email, Google Sheets, CRM integrations, payments, and deployment are planned later. External notifications are still mocked.
+Google Sheets lead sync can be enabled from the backend `.env`. Slack/email notifications, CRM integrations, payments, and deployment are planned later. External notifications are still mocked.
 
 Auth is an MVP localStorage bearer-token flow for portfolio/dev use. Production should use secure cookies or a managed auth provider.

@@ -1,7 +1,8 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Lead
+from app.models import Lead, utc_now
+from app.services.integrations.lead_sync_provider import get_lead_sync_provider
 
 
 def list_leads(db: Session) -> list[Lead]:
@@ -36,6 +37,12 @@ def lead_to_dict(lead: Lead | None) -> dict | None:
         "lead_quality": lead.lead_quality,
         "status": lead.status,
         "created_at": lead.created_at.isoformat(),
+        "external_sync_status": lead.external_sync_status,
+        "external_sync_provider": lead.external_sync_provider,
+        "external_sync_id": lead.external_sync_id,
+        "external_synced_at": lead.external_synced_at.isoformat() if lead.external_synced_at else None,
+        "external_sync_error": lead.external_sync_error,
+        "last_sync_attempt_at": lead.last_sync_attempt_at.isoformat() if lead.last_sync_attempt_at else None,
     }
 
 
@@ -99,6 +106,60 @@ def create_or_update_lead(
     db.commit()
     db.refresh(lead)
     return lead
+
+
+def sync_lead_external(db: Session, lead: Lead, force: bool = False) -> dict:
+    provider = get_lead_sync_provider()
+    provider_name = provider.provider_name
+
+    lead.external_sync_provider = provider_name
+    lead.last_sync_attempt_at = utc_now()
+    lead.external_sync_status = "pending"
+    lead.external_sync_error = None
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+
+    if not provider.is_configured():
+        message = f"{provider_name} lead sync provider is not configured."
+        lead.external_sync_status = "not_configured"
+        lead.external_sync_error = message
+        db.add(lead)
+        db.commit()
+        db.refresh(lead)
+        return {
+            "status": "not_configured",
+            "provider": provider_name,
+            "external_id": lead.external_sync_id,
+            "message": message,
+            "raw": {},
+        }
+
+    result = provider.sync_lead(
+        lead_to_dict(lead) or {},
+        context={"source": "SmartLead Agent", "force": force},
+    )
+    status = result.get("status") or "failed"
+    if status in {"synced", "mock_synced"}:
+        lead.external_sync_status = "synced"
+        lead.external_sync_provider = provider_name
+        lead.external_synced_at = utc_now()
+        lead.external_sync_error = None
+        if result.get("external_id"):
+            lead.external_sync_id = result["external_id"]
+    elif status == "skipped":
+        lead.external_sync_status = "skipped"
+        lead.external_sync_error = result.get("message")
+    else:
+        lead.external_sync_status = "failed"
+        lead.external_sync_error = result.get("message") or "External lead sync failed."
+
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+    result["provider"] = result.get("provider") or provider_name
+    result["external_id"] = result.get("external_id") or lead.external_sync_id
+    return result
 
 
 def score_lead_info(lead_info: dict) -> tuple[int, str]:

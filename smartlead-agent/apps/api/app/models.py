@@ -72,6 +72,12 @@ class Lead(Base):
     lead_quality: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="new")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    external_sync_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    external_sync_provider: Mapped[str | None] = mapped_column(String, nullable=True)
+    external_sync_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    external_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    external_sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_sync_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     conversation: Mapped[Conversation] = relationship(back_populates="leads")
 

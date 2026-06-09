@@ -30,8 +30,19 @@ class Settings(BaseSettings):
     reset_db_allowed: bool = False
     demo_owner_email: str | None = None
     demo_owner_password: str | None = None
+    lead_sync_provider: str = "mock"
+    google_sheets_credentials_json: str | None = None
+    google_sheets_spreadsheet_id: str | None = None
+    google_sheets_worksheet_name: str = "Leads"
+    notification_provider: str = "mock"
+    slack_webhook_url: str | None = None
+    resend_api_key: str | None = None
+    owner_email: str | None = None
+    from_email: str | None = None
+    sync_leads_automatically: bool = True
+    sync_only_complete_leads: bool = False
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
 @lru_cache

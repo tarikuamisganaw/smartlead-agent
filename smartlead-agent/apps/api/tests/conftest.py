@@ -8,6 +8,10 @@ os.environ["MODEL_PROVIDER"] = "mock"
 os.environ["AUTH_ENABLED"] = "false"
 os.environ["ENVIRONMENT"] = "development"
 os.environ["ALLOW_DEV_ADMIN_BYPASS"] = "true"
+os.environ["LEAD_SYNC_PROVIDER"] = "mock"
+os.environ["NOTIFICATION_PROVIDER"] = "mock"
+os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"] = ""
+os.environ["GOOGLE_SHEETS_SPREADSHEET_ID"] = ""
 
 
 @pytest.fixture
@@ -23,6 +27,10 @@ def reset_settings_cache(monkeypatch):
     monkeypatch.setenv("AUTH_ENABLED", "false")
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("ALLOW_DEV_ADMIN_BYPASS", "true")
+    monkeypatch.setenv("LEAD_SYNC_PROVIDER", "mock")
+    monkeypatch.setenv("NOTIFICATION_PROVIDER", "mock")
+    monkeypatch.setenv("GOOGLE_SHEETS_CREDENTIALS_JSON", "")
+    monkeypatch.setenv("GOOGLE_SHEETS_SPREADSHEET_ID", "")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

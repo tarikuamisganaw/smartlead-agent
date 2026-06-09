@@ -106,6 +106,12 @@ class LeadResponse(BaseModel):
     lead_quality: str | None
     status: str
     created_at: str
+    external_sync_status: str | None = None
+    external_sync_provider: str | None = None
+    external_sync_id: str | None = None
+    external_synced_at: str | None = None
+    external_sync_error: str | None = None
+    last_sync_attempt_at: str | None = None
 
 
 class AuthRegisterRequest(BaseModel):
