@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.evals.evaluator import load_eval_cases, read_latest_eval_results, run_all_evals
 from app.models import (
     AgentRun,
     AgentTraceEvent,
@@ -23,6 +24,7 @@ from app.schemas import ChatRequest, ChatResponse, RagSearchRequest
 from app.services.conversation_service import add_message, get_conversation_with_messages, get_or_create_conversation
 from app.services.document_service import default_demo_data_dir, ingest_documents, list_documents_with_chunk_counts
 from app.services.lead_service import get_latest_lead_for_conversation, lead_to_dict, list_leads
+from app.services.metrics_service import collect_agent_run_metrics, default_model_metadata
 from app.services.rag_service import search_docs
 from app.services.trace_service import add_trace_event_to_state, now_ms, persist_trace_events
 from app.workflow.graph import build_graph
@@ -44,11 +46,14 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
     add_message(db, conversation_id=conversation.id, role="user", content=request.message)
     conversation_with_messages = get_conversation_with_messages(db, conversation.id)
     existing_lead = get_latest_lead_for_conversation(db, conversation.id)
+    model_provider, model_name = default_model_metadata()
 
     agent_run = AgentRun(
         conversation_id=conversation.id,
         user_message=request.message,
         status="success",
+        model_provider=model_provider,
+        model_name=model_name,
     )
     db.add(agent_run)
     db.commit()
@@ -79,6 +84,10 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
         "approval_reason": None,
         "selected_action": None,
         "tool_results": [],
+        "model_provider": model_provider,
+        "model_name": model_name,
+        "model_calls": 0,
+        "estimated_cost": 0,
         "final_response": None,
         "trace": [],
         "errors": [],
@@ -111,6 +120,11 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
     agent_run.final_response = final_state["final_response"]
     agent_run.finished_at = utc_now()
     agent_run.total_latency_ms = now_ms(request_started)
+    metrics = collect_agent_run_metrics(final_state)
+    agent_run.total_model_calls = metrics["total_model_calls"]
+    agent_run.estimated_cost = metrics["estimated_cost"]
+    agent_run.model_provider = metrics["model_provider"]
+    agent_run.model_name = metrics["model_name"]
     if final_state.get("fatal_error"):
         agent_run.status = "failed"
     elif final_state.get("requires_human_approval"):
@@ -288,6 +302,27 @@ async def get_approvals(db: Session = Depends(get_db)) -> dict:
     return {"approvals": [_approval_to_dict(approval) for approval in approvals]}
 
 
+@router.get("/evals/cases")
+async def get_eval_cases() -> dict:
+    return {"cases": load_eval_cases()}
+
+
+@router.get("/evals/latest")
+async def get_latest_eval_results() -> dict:
+    return read_latest_eval_results()
+
+
+@router.post("/evals/run")
+async def run_evals(db: Session = Depends(get_db)) -> dict:
+    settings = get_settings()
+    if settings.environment.lower() != "development":
+        raise HTTPException(
+            status_code=403,
+            detail="Eval runs are only allowed when ENVIRONMENT=development.",
+        )
+    return run_all_evals(db=db, persist_results=True)
+
+
 def _message_to_dict(message: Any) -> dict:
     return {
         "id": message.id,
@@ -310,6 +345,8 @@ def _agent_run_to_dict(agent_run: AgentRun) -> dict:
         "total_latency_ms": agent_run.total_latency_ms,
         "total_model_calls": agent_run.total_model_calls,
         "estimated_cost": agent_run.estimated_cost,
+        "model_provider": agent_run.model_provider,
+        "model_name": agent_run.model_name,
     }
 
 

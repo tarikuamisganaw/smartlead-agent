@@ -11,3 +11,4 @@ out/
 *.db
 *.sqlite
 *.sqlite3
+apps/api/eval_results/

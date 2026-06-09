@@ -2,7 +2,7 @@
 
 SmartLead Agent is a local MVP for an AI website assistant for small businesses.
 
-Week 3C includes the backend foundation, local document ingestion, local RAG over demo business markdown files, conversation memory, lead create/update behavior, trace persistence, optional Gemini provider support, a working chat UI, and operational dashboard pages.
+Week 4A includes the backend foundation, local document ingestion, local RAG over demo business markdown files, conversation memory, lead create/update behavior, trace persistence, optional Gemini provider support, a working chat UI, operational dashboard pages, and an evaluation suite with latency/cost tracking.
 
 ## Structure
 
@@ -46,12 +46,20 @@ Dashboard pages:
 - `http://localhost:3000/dashboard/approvals`
 - `http://localhost:3000/dashboard/documents`
 - `http://localhost:3000/dashboard/rag-test`
+- `http://localhost:3000/dashboard/evals`
 
 ## Test
 
 ```bash
 cd apps/api
 pytest
+```
+
+Run deterministic mock evals:
+
+```bash
+cd apps/api
+MODEL_PROVIDER=mock python -m app.evals.run_evals
 ```
 
 ## Current Scope
@@ -71,12 +79,16 @@ Included:
 - `/documents/ingest-demo`
 - `/documents`
 - `/rag/search`
+- `/evals/cases`
+- `/evals/latest`
+- `/evals/run`
 - SQLite persistence through SQLAlchemy
 - LangGraph workflow with local RAG and mocked LLM behavior
 - Lead memory across turns
 - Trace and tool-call persistence
 - Next.js chat UI connected to the backend
 - Dashboard pages for leads, conversations, traces, approvals, documents, and RAG testing
+- Eval suite and eval dashboard for routing, RAG, lead extraction, approvals, tool calls, latency, and estimated cost
 
 Not included yet:
 

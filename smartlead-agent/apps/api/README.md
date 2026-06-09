@@ -2,7 +2,7 @@
 
 Backend foundation for SmartLead Agent, a production-style AI website assistant for small businesses.
 
-Week 3C keeps mock mode for local development and tests, includes optional Gemini LLM provider support, and exposes dashboard-friendly read endpoints. It still does not include auth, real email/Slack, Google Sheets, CRM, or real notifications.
+Week 4A keeps mock mode for deterministic local development and tests, includes optional Gemini LLM provider support, exposes dashboard-friendly read endpoints, and adds an evaluation suite with latency/cost tracking. It still does not include auth, real email/Slack, Google Sheets, CRM, or real notifications.
 
 ## Install
 
@@ -45,6 +45,29 @@ pytest
 
 Tests use mock mode by default and do not require `GEMINI_API_KEY`.
 
+## Run Evals
+
+Mock-mode evals are deterministic and do not require API keys:
+
+```bash
+MODEL_PROVIDER=mock python -m app.evals.run_evals
+```
+
+This prints summary metrics and writes:
+
+```text
+eval_results/latest_eval_results.json
+```
+
+Gemini evals use the current configured provider and may vary between runs. They can consume API quota:
+
+```bash
+set -a
+source .env
+set +a
+python -m app.evals.run_evals
+```
+
 ## LLM Provider Modes
 
 Mock mode is the default and uses deterministic local rules:
@@ -61,6 +84,8 @@ export GEMINI_API_KEY=your_key
 export GEMINI_MODEL=gemini-3.5-flash
 export LLM_TIMEOUT_SECONDS=30
 export LLM_MAX_RETRIES=1
+export ESTIMATED_INPUT_COST_PER_1M_TOKENS=0
+export ESTIMATED_OUTPUT_COST_PER_1M_TOKENS=0
 ```
 
 If `gemini-3.5-flash` is unavailable for your account, set `GEMINI_MODEL` to another Gemini Flash model. If Gemini fails during `/chat`, the workflow falls back to mock behavior and records the fallback in trace output.
@@ -80,6 +105,9 @@ If `gemini-3.5-flash` is unavailable for your account, set `GEMINI_MODEL` to ano
 - `POST /documents/ingest-demo`
 - `GET /documents`
 - `POST /rag/search`
+- `GET /evals/cases`
+- `GET /evals/latest`
+- `POST /evals/run`
 
 ## Example Requests
 
@@ -165,6 +193,24 @@ Approvals:
 curl http://localhost:8000/approvals
 ```
 
+Eval cases:
+
+```bash
+curl http://localhost:8000/evals/cases
+```
+
+Latest eval results:
+
+```bash
+curl http://localhost:8000/evals/latest
+```
+
+Run evals in development:
+
+```bash
+curl -X POST http://localhost:8000/evals/run
+```
+
 ## How Local RAG Works
 
 Markdown files from `data/demo_business` are loaded into `Document` records, split into `DocumentChunk` records, and searched locally. The preferred path uses `sklearn` TF-IDF and cosine similarity. A pure-Python TF-IDF-style fallback is included so the app still runs without external API keys.
@@ -174,6 +220,23 @@ If `/chat` needs RAG and no chunks exist yet, demo docs are auto-ingested.
 ## Conversation Memory
 
 Each `/chat` call saves the user message, runs the graph, saves the assistant response, and persists trace events. Existing lead data for the conversation is loaded into `AgentState`, so a second turn can update the same lead instead of creating a duplicate.
+
+## Metrics And Evals
+
+Agent runs store total latency, model call count, estimated cost, model provider, and model name. Trace events and tool calls store per-step latency.
+
+The eval suite tracks:
+
+- Intent accuracy
+- RAG usage/source accuracy
+- Lead extraction accuracy
+- Human approval accuracy
+- Tool-call accuracy
+- Valid output success
+- Average latency
+- Estimated cost
+
+`POST /evals/run` is allowed only when `ENVIRONMENT=development`.
 
 ## Configuration
 

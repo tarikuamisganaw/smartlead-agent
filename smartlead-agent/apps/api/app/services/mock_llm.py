@@ -35,6 +35,15 @@ def _contains_any(message: str, keywords: tuple[str, ...]) -> bool:
 def mock_classify_intent(message: str) -> IntentResult:
     lowered = message.lower()
 
+    if any(phrase in lowered for phrase in ("help me with something", "not sure what i need", "something else")):
+        return IntentResult(
+            intent="unknown",
+            confidence=0.55,
+            needs_rag=False,
+            requires_human_approval=False,
+            reason="Message is too vague to route confidently.",
+        )
+
     if _contains_any(lowered, DISCOUNT_KEYWORDS):
         return IntentResult(
             intent="discount_request",
@@ -62,15 +71,6 @@ def mock_classify_intent(message: str) -> IntentResult:
             reason="Message describes a support issue.",
         )
 
-    if _contains_any(lowered, LEAD_KEYWORDS):
-        return IntentResult(
-            intent="lead_inquiry",
-            confidence=0.89,
-            needs_rag=True,
-            requires_human_approval=False,
-            reason="Message includes service or buying signals.",
-        )
-
     if any(token in lowered for token in ("what", "when", "where", "who", "can you", "do you", "how")):
         return IntentResult(
             intent="faq_question",
@@ -78,6 +78,15 @@ def mock_classify_intent(message: str) -> IntentResult:
             needs_rag=True,
             requires_human_approval=False,
             reason="Message appears to be a general question.",
+        )
+
+    if _contains_any(lowered, LEAD_KEYWORDS):
+        return IntentResult(
+            intent="lead_inquiry",
+            confidence=0.89,
+            needs_rag=True,
+            requires_human_approval=False,
+            reason="Message includes service or buying signals.",
         )
 
     return IntentResult(

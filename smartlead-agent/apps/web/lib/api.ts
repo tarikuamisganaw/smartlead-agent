@@ -9,6 +9,9 @@ import type {
   ConversationResponse,
   DashboardSummary,
   DocumentInfo,
+  EvalCase,
+  EvalRunResults,
+  LatestEvalResponse,
   Lead,
   RagResult,
 } from "@/lib/types";
@@ -95,5 +98,19 @@ export function searchRag(query: string, topK = 4) {
   return request<{ query: string; results: RagResult[] }>("/rag/search", {
     method: "POST",
     body: JSON.stringify({ query, top_k: topK }),
+  });
+}
+
+export function getEvalCases() {
+  return request<{ cases: EvalCase[] }>("/evals/cases");
+}
+
+export function getLatestEvalResults() {
+  return request<LatestEvalResponse>("/evals/latest");
+}
+
+export function runEvals() {
+  return request<EvalRunResults>("/evals/run", {
+    method: "POST",
   });
 }

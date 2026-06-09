@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -74,7 +74,9 @@ class AgentRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     total_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total_model_calls: Mapped[int] = mapped_column(Integer, default=0)
-    estimated_cost: Mapped[int] = mapped_column(Integer, default=0)
+    estimated_cost: Mapped[float] = mapped_column(Float, default=0)
+    model_provider: Mapped[str | None] = mapped_column(String, nullable=True)
+    model_name: Mapped[str | None] = mapped_column(String, nullable=True)
 
     conversation: Mapped[Conversation] = relationship(back_populates="agent_runs")
     trace_events: Mapped[list["AgentTraceEvent"]] = relationship(

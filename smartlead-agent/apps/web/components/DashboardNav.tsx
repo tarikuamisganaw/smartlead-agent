@@ -12,6 +12,7 @@ const links = [
   { href: "/dashboard/approvals", label: "Approvals" },
   { href: "/dashboard/documents", label: "Documents" },
   { href: "/dashboard/rag-test", label: "RAG Test" },
+  { href: "/dashboard/evals", label: "Evals" },
 ];
 
 export default function DashboardNav() {

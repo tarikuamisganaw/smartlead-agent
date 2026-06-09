@@ -63,6 +63,7 @@ npm run build
 - Read-only approvals queue
 - Documents page with demo ingestion
 - RAG search tester
+- Eval dashboard with latest results and run button
 
 ## Dashboard Pages
 
@@ -74,6 +75,7 @@ npm run build
 - `/dashboard/approvals`
 - `/dashboard/documents`
 - `/dashboard/rag-test`
+- `/dashboard/evals`
 
 ## Demo Flow
 

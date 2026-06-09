@@ -54,6 +54,8 @@ export type AgentRun = {
   total_latency_ms?: number | null;
   total_model_calls: number;
   estimated_cost: number;
+  model_provider?: string | null;
+  model_name?: string | null;
 };
 
 export type ConversationListItem = {
@@ -149,4 +151,48 @@ export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   response?: ChatResponse;
+};
+
+export type EvalCase = {
+  id: string;
+  input?: string;
+  turns?: string[];
+  [key: string]: unknown;
+};
+
+export type EvalMetrics = {
+  intent_correct: number;
+  rag_usage_correct: number;
+  lead_extraction_correct: number;
+  approval_correct: number;
+  tool_call_correct: number;
+  valid_output: number;
+  average_latency_ms: number;
+  estimated_cost: number;
+};
+
+export type EvalCaseResult = {
+  case_id: string;
+  passed: boolean;
+  scores: Record<string, boolean>;
+  expected: Record<string, unknown>;
+  actual: Record<string, unknown>;
+  errors: string[];
+  latency_ms: number;
+};
+
+export type EvalRunResults = {
+  provider: string;
+  model?: string | null;
+  total_cases: number;
+  passed_cases: number;
+  pass_rate: number;
+  metrics: EvalMetrics;
+  results: EvalCaseResult[];
+};
+
+export type LatestEvalResponse = EvalRunResults | {
+  status: "missing";
+  message: string;
+  results: null;
 };

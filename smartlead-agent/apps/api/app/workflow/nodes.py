@@ -6,10 +6,12 @@ from app.models import HumanApproval
 from app.services.mock_tools import create_followup_draft, create_or_update_lead_record, mock_send_owner_notification
 from app.services.lead_service import merge_lead_info, score_lead_info
 from app.services.llm_service import (
+    LLMCallResult,
     classify_intent_with_metadata,
     extract_lead_info_with_metadata,
     generate_final_response_with_metadata,
 )
+from app.services.metrics_service import record_model_call
 from app.services.rag_service import search_docs
 from app.services.trace_service import add_trace_event_to_state, now_ms, persist_tool_call
 from app.workflow.state import AgentState
@@ -23,6 +25,7 @@ def intent_router_node(state: AgentState) -> AgentState:
     node_name = "intent_router_node"
     try:
         llm_result = classify_intent_with_metadata(state["user_message"], _conversation_context(state))
+        _record_llm_metrics(state, llm_result)
         result = llm_result.value
         state["intent"] = result.intent
         state["intent_confidence"] = result.confidence
@@ -121,6 +124,7 @@ def lead_qualification_node(state: AgentState) -> AgentState:
             return state
 
         llm_result = extract_lead_info_with_metadata(state["user_message"], _conversation_context(state))
+        _record_llm_metrics(state, llm_result)
         lead_info = llm_result.value
         merged_info = merge_lead_info(state.get("existing_lead"), lead_info.model_dump())
         state["lead_info"] = merged_info
@@ -199,7 +203,7 @@ def action_node(state: AgentState, db: Session) -> AgentState:
     try:
         lead_info = state.get("lead_info") or {}
         lead = None
-        if _has_meaningful_lead_data(lead_info):
+        if _should_save_lead(state, lead_info):
             lead_started = perf_counter()
             lead = create_or_update_lead_record(
                 db=db,
@@ -344,6 +348,7 @@ def final_response_node(state: AgentState) -> AgentState:
             status = "failed"
         else:
             llm_result = generate_final_response_with_metadata(state)
+            _record_llm_metrics(state, llm_result)
             final = llm_result.value
             state["final_response"] = final.message
             status = "success"
@@ -397,6 +402,14 @@ def _has_meaningful_lead_data(lead_info: dict) -> bool:
     )
 
 
+def _should_save_lead(state: AgentState, lead_info: dict) -> bool:
+    if not _has_meaningful_lead_data(lead_info):
+        return False
+    if state.get("existing_lead") or state.get("intent") == "lead_inquiry":
+        return True
+    return any(lead_info.get(field) for field in ("budget", "email", "phone", "business_type", "timeline"))
+
+
 def _approval_action_type(message: str) -> str:
     lowered = message.lower()
     if "refund" in lowered:
@@ -422,6 +435,10 @@ def _trace_error_suffix(error_message: str | None) -> str:
     if not error_message:
         return ""
     return f"; fallback_error={_short(error_message, 120)}"
+
+
+def _record_llm_metrics(state: AgentState, llm_result: LLMCallResult) -> None:
+    record_model_call(state, provider=llm_result.provider, model=llm_result.model)
 
 
 def _record_node_failure(state: AgentState, node_name: str, exc: Exception, started: float) -> None:

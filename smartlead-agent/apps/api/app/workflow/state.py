@@ -19,6 +19,10 @@ class AgentState(TypedDict):
     approval_reason: str | None
     selected_action: str | None
     tool_results: list[dict]
+    model_provider: str | None
+    model_name: str | None
+    model_calls: int
+    estimated_cost: float
     final_response: str | None
     trace: list[dict]
     errors: list[dict]
