@@ -38,6 +38,11 @@ class RagSearchRequest(BaseModel):
     top_k: int = Field(default=4, ge=1, le=10)
 
 
+class DocumentUploadRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=180)
+    content: str = Field(..., min_length=1, max_length=500_000)
+
+
 class IntentResult(BaseModel):
     intent: IntentLiteral
     confidence: float

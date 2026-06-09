@@ -149,6 +149,13 @@ export function ingestDemoDocuments() {
   });
 }
 
+export function uploadDocument(payload: { title: string; content: string }) {
+  return request<{ document_id: string; title: string; source: string; chunks_created: number }>("/documents/upload", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getDocuments() {
   return request<{ documents: DocumentInfo[] }>("/documents");
 }

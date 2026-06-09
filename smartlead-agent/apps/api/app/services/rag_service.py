@@ -19,6 +19,28 @@ except Exception:  # pragma: no cover - fallback is covered in normal local runs
 
 
 TOKEN_RE = re.compile(r"[a-zA-Z0-9]+")
+GENERIC_QUERY_TOKENS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "can",
+    "cost",
+    "does",
+    "for",
+    "how",
+    "intent",
+    "is",
+    "it",
+    "much",
+    "price",
+    "pricing",
+    "question",
+    "the",
+    "to",
+    "what",
+    "you",
+}
 _CACHED_INDEX: "LocalRagIndex | None" = None
 
 
@@ -176,20 +198,58 @@ def _cosine(left: dict[str, float], right: dict[str, float]) -> float:
     return numerator / (left_norm * right_norm)
 
 
-def _keyword_boost(query: str, chunk: DocumentChunk) -> float:
+def _keyword_boost(query: str, chunk: RagChunk) -> float:
     lowered_query = query.lower()
     haystack = f"{chunk.title} {chunk.source} {chunk.content}".lower()
+    haystack_tokens = set(_tokenize(haystack))
+    specific_query_tokens = _specific_query_tokens(query)
     boost = 0.0
 
-    if any(term in lowered_query for term in ("price", "pricing", "cost", "how much")) and "pricing" in haystack:
-        boost += 0.6
+    overlap = set(specific_query_tokens) & haystack_tokens
+    if specific_query_tokens:
+        boost += min(0.55, 0.12 * len(overlap))
+        coverage = len(overlap) / len(set(specific_query_tokens))
+        if coverage >= 0.75:
+            boost += 0.25
+        elif coverage >= 0.5:
+            boost += 0.12
+
+    boost += _phrase_overlap_boost(specific_query_tokens, haystack)
+
+    if any(term in lowered_query for term in ("price", "pricing", "cost", "how much")) and (
+        "pricing" in haystack or re.search(r"\$\s*\d", haystack)
+    ):
+        boost += 0.12
     if any(term in lowered_query for term in ("refund", "discount", "guarantee", "promise")) and "refund" in haystack:
-        boost += 0.6
-    if "case" in lowered_query and "case-studies" in haystack:
-        boost += 0.6
-    if "website" in lowered_query and any(term in haystack for term in ("website", "services", "pricing")):
         boost += 0.25
+    if "case" in lowered_query and "case-studies" in haystack:
+        boost += 0.25
+    if "website" in lowered_query and any(term in haystack for term in ("website", "services", "pricing")):
+        boost += 0.08
     if "seo" in lowered_query and "seo" in haystack:
-        boost += 0.2
+        boost += 0.08
 
     return boost
+
+
+def _specific_query_tokens(query: str) -> list[str]:
+    return [token for token in _tokenize(query) if token not in GENERIC_QUERY_TOKENS and not token.endswith("_question")]
+
+
+def _phrase_overlap_boost(tokens: list[str], haystack: str) -> float:
+    if len(tokens) < 2:
+        return 0.0
+
+    boost = 0.0
+    seen_phrases: set[str] = set()
+    for size, weight in ((4, 0.22), (3, 0.16), (2, 0.08)):
+        if len(tokens) < size:
+            continue
+        for index in range(len(tokens) - size + 1):
+            phrase = " ".join(tokens[index : index + size])
+            if phrase in seen_phrases:
+                continue
+            seen_phrases.add(phrase)
+            if phrase in haystack:
+                boost += weight
+    return min(boost, 0.45)

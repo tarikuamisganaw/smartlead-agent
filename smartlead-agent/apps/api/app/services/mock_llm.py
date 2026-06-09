@@ -234,18 +234,14 @@ def _extract_timeline(lowered: str) -> str | None:
 
 
 def _pricing_response_from_docs(docs: list[dict]) -> str:
-    pricing_docs = [doc for doc in docs if "pricing" in doc.get("title", "").lower()]
-    docs_to_use = pricing_docs or docs
-    text = "\n".join(doc.get("content", "") for doc in docs_to_use)
-    if not text:
-        return "I could not find that in the business documents, but I can collect your details and have the team confirm."
+    for doc in docs:
+        snippets = _price_snippets(doc.get("content", ""))
+        if snippets:
+            joined = "; ".join(snippets[:3])
+            title = doc.get("title") or "the business document"
+            return f"According to {title}, {joined}."
 
-    prices = re.findall(r"(?:(?:SEO Starter Package|SEO Growth Package|Website Design|Paid Ads Setup|AI Automation Setup)[^.\n$]*\$[\d,]+(?:/month)?)", text)
-    if prices:
-        joined = "; ".join(dict.fromkeys(price.strip("- ").strip() for price in prices[:4]))
-        return f"According to the pricing document, {joined}."
-
-    return "I found the pricing document, but I could not identify a specific price for that question. I can collect your details and have the team confirm."
+    return "I could not find a specific price in the business documents, but I can collect your details and have the team confirm."
 
 
 def _pricing_hint_for_service(service: str, docs: list[dict]) -> str | None:
@@ -268,6 +264,23 @@ def _pricing_hint_for_service(service: str, docs: list[dict]) -> str | None:
             if matches:
                 return f"The pricing document lists {' and '.join(matches[:2])}."
     return None
+
+
+def _price_snippets(text: str) -> list[str]:
+    snippets: list[str] = []
+    for line in text.splitlines():
+        cleaned = line.strip().strip("-").strip()
+        if "$" in cleaned and cleaned not in snippets:
+            snippets.append(cleaned)
+
+    if snippets:
+        return snippets
+
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        cleaned = sentence.strip()
+        if "$" in cleaned and cleaned not in snippets:
+            snippets.append(cleaned)
+    return snippets
 
 
 def _doc_titles(docs: list[dict]) -> str:

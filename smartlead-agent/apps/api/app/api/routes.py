@@ -22,7 +22,7 @@ from app.models import (
     ToolCall,
     utc_now,
 )
-from app.schemas import ChatRequest, ChatResponse, RagSearchRequest
+from app.schemas import ChatRequest, ChatResponse, DocumentUploadRequest, RagSearchRequest
 from app.services.auth_service import (
     get_current_user_optional,
     get_current_user_required,
@@ -31,7 +31,12 @@ from app.services.auth_service import (
     get_or_create_default_organization,
 )
 from app.services.conversation_service import add_message, get_conversation_with_messages, get_or_create_conversation
-from app.services.document_service import default_demo_data_dir, ingest_documents, list_documents_with_chunk_counts
+from app.services.document_service import (
+    create_document_from_content,
+    default_demo_data_dir,
+    ingest_documents,
+    list_documents_with_chunk_counts,
+)
 from app.services.lead_service import get_latest_lead_for_conversation, lead_to_dict, list_leads
 from app.services.metrics_service import collect_agent_run_metrics, default_model_metadata
 from app.services.performance_service import recent_performance
@@ -352,6 +357,25 @@ async def ingest_demo_documents(request: Request, db: Session = Depends(get_db))
 async def get_documents(request: Request, db: Session = Depends(get_db)) -> dict:
     require_admin_read(db, request)
     return {"documents": list_documents_with_chunk_counts(db)}
+
+
+@router.post("/documents/upload")
+async def upload_document(upload_request: DocumentUploadRequest, request: Request, db: Session = Depends(get_db)) -> dict:
+    require_admin_write(db, request)
+    organization = get_or_create_default_organization(db)
+    try:
+        result = create_document_from_content(
+            db,
+            title=upload_request.title,
+            content=upload_request.content,
+            organization_id=organization.id,
+        )
+        invalidate_rag_index()
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Document upload failed: {exc}") from exc
 
 
 @router.post("/rag/search")

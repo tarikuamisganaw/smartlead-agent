@@ -6,13 +6,15 @@ import DocumentsTable from "@/components/DocumentsTable";
 import EmptyState from "@/components/EmptyState";
 import ErrorState from "@/components/ErrorState";
 import LoadingState from "@/components/LoadingState";
-import { getDocuments, ingestDemoDocuments } from "@/lib/api";
+import { getDocuments, ingestDemoDocuments, uploadDocument } from "@/lib/api";
 import type { DocumentInfo } from "@/lib/types";
 
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ingestResult, setIngestResult] = useState<string | null>(null);
 
@@ -48,6 +50,32 @@ export default function DocumentsPage() {
     }
   }
 
+  async function handleUpload() {
+    if (!selectedFile || uploading) {
+      return;
+    }
+    const extension = selectedFile.name.split(".").pop()?.toLowerCase();
+    if (!extension || !["md", "txt"].includes(extension)) {
+      setError("Only .md and .txt files can be uploaded.");
+      return;
+    }
+
+    setUploading(true);
+    setError(null);
+    setIngestResult(null);
+    try {
+      const content = await selectedFile.text();
+      const result = await uploadDocument({ title: selectedFile.name, content });
+      setIngestResult(`${result.title} uploaded, ${result.chunks_created} chunks created.`);
+      setSelectedFile(null);
+      await loadDocuments();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not upload document.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   return (
     <DashboardLayout
       title="Documents"
@@ -65,8 +93,28 @@ export default function DocumentsPage() {
     >
       <div className="space-y-4">
         <p className="rounded-md border border-line bg-panel px-4 py-3 text-sm leading-6 text-ink/65">
-          Editing markdown files does not update the database until documents are ingested again.
+          Upload .md or .txt business documents here. Uploaded content is chunked, stored in SQLite, and used by RAG search and chat answers.
         </p>
+        <section className="rounded-md border border-line bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-ink">Upload document</h2>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <input
+              type="file"
+              accept=".md,.txt,text/markdown,text/plain"
+              onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
+              className="min-h-10 rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink"
+            />
+            <button
+              type="button"
+              onClick={() => void handleUpload()}
+              disabled={!selectedFile || uploading}
+              className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:bg-ink/25"
+            >
+              {uploading ? "Uploading..." : "Upload"}
+            </button>
+          </div>
+          {selectedFile ? <p className="mt-2 text-xs text-ink/50">{selectedFile.name}</p> : null}
+        </section>
         {ingestResult ? (
           <p className="rounded-md border border-brand/25 bg-brand/10 px-4 py-3 text-sm font-medium text-brand">
             {ingestResult}

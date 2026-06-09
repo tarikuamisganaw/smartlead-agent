@@ -112,6 +112,8 @@ Required JSON shape:
 
 Rules:
 - Answer from retrieved_docs when available.
+- retrieved_docs are sorted by relevance. Prefer the first/highest-scored document when it directly answers the question.
+- If a specific uploaded/custom document contains a price for the user's exact subject, use that price before generic pricing documents.
 - Do not hallucinate pricing not found in retrieved_docs.
 - If no docs are found, say the business team can confirm.
 - If requires_human_approval is true, do not approve discounts, refunds, guarantees, free service, or promised results.

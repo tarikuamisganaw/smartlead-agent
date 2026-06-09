@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 from app.models import Document, DocumentChunk
 
 
+ALLOWED_UPLOAD_EXTENSIONS = {".md", ".txt"}
+
+
 def default_demo_data_dir() -> str:
     project_root = Path(__file__).resolve().parents[4]
     return str(project_root / "data" / "demo_business")
@@ -97,6 +100,65 @@ def ingest_documents(db: Session, data_dir: str, clear_existing: bool = True) ->
 
         db.commit()
         return {"documents_ingested": len(documents), "chunks_created": chunks_created}
+    except Exception:
+        db.rollback()
+        raise
+
+
+def create_document_from_content(
+    db: Session,
+    *,
+    title: str,
+    content: str,
+    source: str | None = None,
+    organization_id: str | None = None,
+) -> dict:
+    clean_title = title.strip()
+    clean_content = content.strip()
+    extension = Path(clean_title).suffix.lower()
+    if extension not in ALLOWED_UPLOAD_EXTENSIONS:
+        raise ValueError("Only .md and .txt documents can be uploaded.")
+    if not clean_content:
+        raise ValueError("Uploaded document content cannot be empty.")
+
+    try:
+        document = Document(
+            organization_id=organization_id,
+            title=clean_title,
+            source=source or f"uploaded:{clean_title}",
+            content=clean_content,
+        )
+        db.add(document)
+        db.flush()
+
+        chunks = chunk_text(document.content)
+        for index, chunk in enumerate(chunks):
+            db.add(
+                DocumentChunk(
+                    document_id=document.id,
+                    organization_id=organization_id,
+                    source=document.source,
+                    title=document.title,
+                    chunk_index=index,
+                    content=chunk,
+                    metadata_json=json.dumps(
+                        {
+                            "title": document.title,
+                            "source": document.source,
+                            "uploaded": True,
+                        }
+                    ),
+                )
+            )
+
+        db.commit()
+        db.refresh(document)
+        return {
+            "document_id": document.id,
+            "title": document.title,
+            "source": document.source,
+            "chunks_created": len(chunks),
+        }
     except Exception:
         db.rollback()
         raise
