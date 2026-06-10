@@ -27,15 +27,15 @@ export default function ChatsPage() {
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-5">
           <div>
             <h1 className="text-3xl font-semibold text-ink">Chats</h1>
-            <p className="mt-2 text-sm text-ink/65">Signed-in users can preserve their own chat history.</p>
+            <p className="mt-2 text-sm text-ink/65">Review and continue your conversations.</p>
           </div>
           <AuthStatus />
         </div>
         {loading ? <LoadingState label="Loading chats..." /> : null}
         {requiresLogin ? (
           <EmptyState
-            title="Sign in to keep chat history."
-            message="Guests can chat on the homepage, but saved conversations and extra chat windows belong to signed-in users."
+            title="Sign in to view chats."
+            message="Use the homepage to try chat, or sign in to open your conversations."
             action={
               <div className="flex flex-wrap gap-2">
                 <Link className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white" href="/login">

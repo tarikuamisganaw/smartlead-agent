@@ -79,7 +79,7 @@ export default function DocumentsPage() {
   return (
     <DashboardLayout
       title="Documents"
-      subtitle="Business markdown files stored in SQLite and chunked for local RAG retrieval."
+      subtitle="Manage the business documents the assistant can use."
       actions={
         <button
           type="button"
@@ -87,14 +87,11 @@ export default function DocumentsPage() {
           disabled={busy}
           className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:bg-ink/25"
         >
-          {busy ? "Ingesting..." : "Ingest demo documents"}
+          {busy ? "Loading..." : "Load sample documents"}
         </button>
       }
     >
       <div className="space-y-4">
-        <p className="rounded-md border border-line bg-panel px-4 py-3 text-sm leading-6 text-ink/65">
-          Upload .md or .txt business documents here. Uploaded content is chunked, stored in SQLite, and used by RAG search and chat answers.
-        </p>
         <section className="rounded-md border border-line bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-ink">Upload document</h2>
           <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -124,7 +121,7 @@ export default function DocumentsPage() {
         {error ? <ErrorState message={error} /> : null}
         {!loading && !error && documents.length ? <DocumentsTable documents={documents} /> : null}
         {!loading && !error && !documents.length ? (
-          <EmptyState title="No documents ingested yet." message="Use the ingest button to load the demo business markdown files." />
+          <EmptyState title="No documents yet." message="Load the sample set or upload a business document to get started." />
         ) : null}
       </div>
     </DashboardLayout>

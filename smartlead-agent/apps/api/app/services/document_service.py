@@ -74,8 +74,12 @@ def ingest_documents(db: Session, data_dir: str, clear_existing: bool = True) ->
 
     try:
         if clear_existing:
-            db.execute(delete(DocumentChunk))
-            db.execute(delete(Document))
+            demo_document_ids = list(
+                db.scalars(select(Document.id).where(Document.source.not_like("uploaded:%"))).all()
+            )
+            if demo_document_ids:
+                db.execute(delete(DocumentChunk).where(DocumentChunk.document_id.in_(demo_document_ids)))
+                db.execute(delete(Document).where(Document.id.in_(demo_document_ids)))
             db.commit()
 
         chunks_created = 0

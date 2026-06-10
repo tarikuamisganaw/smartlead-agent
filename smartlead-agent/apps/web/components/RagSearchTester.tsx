@@ -93,11 +93,11 @@ export default function RagSearchTester() {
         </div>
       </section>
 
-      {loading ? <LoadingState label="Searching document chunks..." /> : null}
+      {loading ? <LoadingState label="Searching documents..." /> : null}
       {error ? <ErrorState message={error} /> : null}
 
       {!loading && searched && !results.length ? (
-        <EmptyState title="No chunks matched." message="Try ingesting demo documents or searching with a business term like SEO, pricing, refund, onboarding, or case studies." />
+        <EmptyState title="No matching documents found." message="Try loading the sample documents or searching for a service, price, policy, onboarding step, or case study." />
       ) : null}
 
       <div className="grid gap-3">
@@ -109,11 +109,10 @@ export default function RagSearchTester() {
                 <p className="mt-1 break-all text-xs text-ink/50">{result.source}</p>
               </div>
               <span className="rounded-md border border-brand/25 bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
-                Score {result.score}
+                Match {result.score}
               </span>
             </div>
             <p className="mt-3 text-sm leading-6 text-ink/70">{result.content}</p>
-            <p className="mt-3 break-all text-xs text-ink/45">Chunk {result.chunk_id}</p>
           </article>
         ))}
       </div>
