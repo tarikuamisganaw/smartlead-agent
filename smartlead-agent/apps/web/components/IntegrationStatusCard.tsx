@@ -26,13 +26,35 @@ export default function IntegrationStatusCard({ status }: { status: IntegrationS
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold text-ink">Notifications</h2>
-            <p className="mt-1 text-sm text-ink/60">{formatLabel(status.notification.provider)}</p>
+            <p className="mt-1 text-sm text-ink/60">{status.notification_providers.map(formatLabel).join(", ")}</p>
           </div>
-          <StatusBadge value={status.notification.configured} label={status.notification.configured ? "Configured" : "Mock / Reserved"} />
+          <StatusBadge value={status.notification.configured} label={status.notification.configured ? "Configured" : "Needs Config"} />
         </div>
-        <p className="mt-5 text-sm leading-6 text-ink/65">
-          Slack and email providers are represented here for future setup. Week 4C keeps real notifications disabled unless a provider is explicitly implemented later.
-        </p>
+        <dl className="mt-5 grid gap-3 text-sm">
+          {status.notification_providers.map((provider) => (
+            <Row
+              key={provider}
+              label={`${formatLabel(provider)} configured`}
+              value={status.notification_configured[provider] ? "Yes" : "No"}
+            />
+          ))}
+          <Row label="Email Provider" value={status.email_optional ? "Optional" : "Required"} />
+          <Row label="Email Configured" value={status.notification_configured.email ? "Yes" : "No"} />
+          <Row label="Owner Lead Notifications" value={status.send_owner_notifications ? "Enabled" : "Disabled"} />
+          <Row label="Approval Notifications" value={status.send_approval_notifications ? "Enabled" : "Disabled"} />
+          <Row label="Sync Failure Notifications" value={status.send_lead_sync_failure_notifications ? "Enabled" : "Disabled"} />
+          <Row label="Customer Follow-up Emails" value={status.send_customer_followup_emails ? "Enabled" : "Disabled"} />
+        </dl>
+        <div className="mt-5 space-y-2 text-sm leading-6 text-ink/65">
+          <p>Secrets are configured on the backend through environment variables. They are never shown here.</p>
+          <p>Email is optional. Slack notifications are enough for this demo. Real email requires Resend and a verified sending domain.</p>
+          {status.notification_providers.includes("slack") && !status.notification_configured.slack ? (
+            <p className="text-accent">Slack provider is selected but SLACK_WEBHOOK_URL is missing.</p>
+          ) : null}
+          {status.notification_providers.includes("email") && !status.notification_configured.email ? (
+            <p className="text-gold">Email selected but not configured. Notifications will continue through other providers.</p>
+          ) : null}
+        </div>
       </section>
     </div>
   );

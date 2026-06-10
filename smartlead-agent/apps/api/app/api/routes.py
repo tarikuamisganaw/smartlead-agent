@@ -38,7 +38,7 @@ from app.services.document_service import (
     list_documents_with_chunk_counts,
 )
 from app.services.integrations.lead_sync_provider import get_lead_sync_provider
-from app.services.integrations.notification_provider import get_notification_provider
+from app.services.integrations.notification_provider import get_notification_providers
 from app.services.lead_service import get_latest_lead_for_conversation, lead_to_dict, list_leads, sync_lead_external
 from app.services.metrics_service import collect_agent_run_metrics, default_model_metadata
 from app.services.performance_service import recent_performance
@@ -299,8 +299,25 @@ async def get_integrations_status(request: Request, db: Session = Depends(get_db
     require_admin_read(db, request)
     settings = get_settings()
     lead_sync_provider = get_lead_sync_provider()
-    notification_provider = get_notification_provider()
+    notification_providers = get_notification_providers()
+    notification_configured = {
+        provider.provider_name: provider.is_configured()
+        for provider in notification_providers
+    }
+    notification_configured.setdefault("email", bool(settings.resend_api_key and settings.owner_email and settings.from_email))
+    notification_configured.setdefault("slack", bool(settings.slack_webhook_url))
+    notification_configured.setdefault("mock", True)
+    selected_notification_provider_names = [provider.provider_name for provider in notification_providers]
     return {
+        "lead_sync_provider": lead_sync_provider.provider_name,
+        "lead_sync_configured": lead_sync_provider.is_configured(),
+        "notification_providers": selected_notification_provider_names,
+        "notification_configured": notification_configured,
+        "email_optional": True,
+        "send_owner_notifications": settings.send_owner_notifications,
+        "send_approval_notifications": settings.send_approval_notifications,
+        "send_lead_sync_failure_notifications": settings.send_lead_sync_failure_notifications,
+        "send_customer_followup_emails": settings.send_customer_followup_emails,
         "lead_sync": {
             "provider": lead_sync_provider.provider_name,
             "configured": lead_sync_provider.is_configured(),
@@ -313,8 +330,15 @@ async def get_integrations_status(request: Request, db: Session = Depends(get_db
             },
         },
         "notification": {
-            "provider": notification_provider.provider_name,
-            "configured": notification_provider.is_configured(),
+            "provider": ",".join(selected_notification_provider_names),
+            "providers": selected_notification_provider_names,
+            "configured": all(notification_configured.get(name, False) for name in selected_notification_provider_names),
+            "configured_by_provider": notification_configured,
+            "email_optional": True,
+            "send_owner_notifications": settings.send_owner_notifications,
+            "send_approval_notifications": settings.send_approval_notifications,
+            "send_lead_sync_failure_notifications": settings.send_lead_sync_failure_notifications,
+            "send_customer_followup_emails": settings.send_customer_followup_emails,
         },
     }
 

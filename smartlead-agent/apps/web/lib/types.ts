@@ -65,6 +65,15 @@ export type LeadSyncResponse = {
 };
 
 export type IntegrationStatus = {
+  lead_sync_provider: string;
+  lead_sync_configured: boolean;
+  notification_providers: string[];
+  notification_configured: Record<string, boolean>;
+  email_optional: boolean;
+  send_owner_notifications: boolean;
+  send_approval_notifications: boolean;
+  send_lead_sync_failure_notifications: boolean;
+  send_customer_followup_emails: boolean;
   lead_sync: {
     provider: string;
     configured: boolean;
@@ -78,7 +87,14 @@ export type IntegrationStatus = {
   };
   notification: {
     provider: string;
+    providers?: string[];
     configured: boolean;
+    configured_by_provider?: Record<string, boolean>;
+    email_optional?: boolean;
+    send_owner_notifications?: boolean;
+    send_approval_notifications?: boolean;
+    send_lead_sync_failure_notifications?: boolean;
+    send_customer_followup_emails?: boolean;
   };
 };
 

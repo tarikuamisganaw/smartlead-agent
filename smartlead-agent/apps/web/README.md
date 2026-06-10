@@ -66,7 +66,7 @@ npm run build
 - Documents page with demo ingestion
 - RAG search tester
 - Eval dashboard with latest results and run button
-- Integration status dashboard
+- Integration status dashboard for lead sync and notification providers
 - Guest chat state and signed-in chat history pages
 - Login/register MVP pages
 
@@ -97,6 +97,6 @@ npm run build
 6. Send: `Can you give me 70% discount and promise results?`
 7. Inspect the dashboard pages.
 
-Google Sheets lead sync can be enabled from the backend `.env`. Slack/email notifications, CRM integrations, payments, and deployment are planned later. External notifications are still mocked.
+Google Sheets lead sync and Slack owner notifications can be enabled from the backend `.env`. Email/Resend is optional and only needed if the business wants owner email alerts with a verified sending domain. CRM integrations, customer email automation, payments, and deployment are planned later. Customer follow-up emails are disabled by default.
 
 Auth is an MVP localStorage bearer-token flow for portfolio/dev use. Production should use secure cookies or a managed auth provider.

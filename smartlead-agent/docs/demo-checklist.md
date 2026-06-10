@@ -119,3 +119,83 @@ Expected:
 - Chat says the team must review it
 - `/dashboard/approvals` shows a pending approval
 - The assistant does not approve discounts or guarantee results
+
+## 8. Mock Notification Demo
+
+In `apps/api/.env`, set:
+
+```env
+NOTIFICATION_PROVIDERS=mock
+SEND_OWNER_NOTIFICATIONS=true
+```
+
+Restart FastAPI, then submit:
+
+```text
+My name is Sara and my email is sara@example.com. I need SEO for my gym. My budget is $3000 and I want to start next week.
+```
+
+Expected:
+
+- Chat succeeds
+- `/dashboard/traces/{agentRunId}` shows `notify_owner_mock`
+- No external service is called
+
+## 9. Slack Notification Demo
+
+Set:
+
+```env
+NOTIFICATION_PROVIDERS=slack
+SLACK_WEBHOOK_URL=...
+```
+
+Restart FastAPI and submit a warm/hot lead.
+
+Expected:
+
+- Slack receives a SmartLead message
+- Trace/tool calls show `notify_owner_slack`
+- If the webhook is missing, chat still succeeds and the tool call is marked failed
+
+## 10. Email Notification Demo
+
+Email is optional. Skip this step unless you want to test Resend with a verified sending domain or approved test sender.
+
+Set:
+
+```env
+NOTIFICATION_PROVIDERS=slack,email
+RESEND_API_KEY=...
+OWNER_EMAIL=owner@example.com
+FROM_EMAIL=SmartLead <noreply@yourdomain.com>
+OWNER_NAME=Business Owner
+```
+
+Restart FastAPI and submit a warm/hot lead.
+
+Expected:
+
+- Owner email receives the notification
+- Trace/tool calls show `notify_owner_email`
+- Customer follow-up emails are not sent while `SEND_CUSTOMER_FOLLOWUP_EMAILS=false`
+
+## 11. Approval Notification Demo
+
+Set:
+
+```env
+NOTIFICATION_PROVIDERS=mock
+SEND_APPROVAL_NOTIFICATIONS=true
+```
+
+Ask:
+
+```text
+Can you give me 70% discount and promise results?
+```
+
+Expected:
+
+- Pending approval is created
+- Trace/tool calls show `notify_approval_mock`

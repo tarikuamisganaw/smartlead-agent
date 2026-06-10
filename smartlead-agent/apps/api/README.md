@@ -2,7 +2,7 @@
 
 Backend foundation for SmartLead Agent, a production-style AI website assistant for small businesses.
 
-Week 4C keeps mock mode for deterministic local development and tests, includes optional Gemini LLM provider support, exposes dashboard-friendly read endpoints, adds an evaluation suite with latency/cost tracking, caches local RAG retrieval, adds an auth/RBAC foundation, and adds provider-based lead sync with a mock provider plus optional Google Sheets support. It still does not include real email/Slack notifications, CRM, payment, deployment, or production auth hardening.
+Week 4C keeps mock mode for deterministic local development and tests, includes optional Gemini LLM provider support, exposes dashboard-friendly read endpoints, adds an evaluation suite with latency/cost tracking, caches local RAG retrieval, adds an auth/RBAC foundation, adds provider-based lead sync with mock/Google Sheets support, and adds optional Slack/owner-email notifications. It still does not include CRM, payment, deployment, customer follow-up email automation, or production auth hardening.
 
 ## Install
 
@@ -45,7 +45,7 @@ pytest
 
 Tests use mock mode by default and do not require `GEMINI_API_KEY`.
 
-The integration tests also default to mock lead sync and do not call Google Sheets.
+The integration tests also default to mock lead sync and mock notifications. They do not call Google Sheets, Slack, or Resend unless you run the optional real-provider tests with separate test env vars.
 
 ## Auth Setup
 
@@ -133,11 +133,82 @@ The spreadsheet ID is the long value in the sheet URL between `/d/` and `/edit`.
 
 Google Sheets sync appends a row the first time and updates the saved row range on later sync attempts when possible. If Google Sheets is missing or unavailable, `/chat` still returns normally; the lead keeps a local `external_sync_status` such as `not_configured` or `failed`.
 
-Slack and email notification providers are status placeholders for later phases:
+## Notification Providers
+
+SmartLead Agent does not require email integration. The recommended MVP/demo setup is Google Sheets for lead storage/sync and Slack for owner/team alerts. Email can stay disabled or mocked.
+
+Recommended real demo notifications:
 
 ```env
-NOTIFICATION_PROVIDER=mock
+LEAD_SYNC_PROVIDER=google_sheets
+NOTIFICATION_PROVIDERS=slack
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+SEND_CUSTOMER_FOLLOWUP_EMAILS=false
 ```
+
+Fully local notifications:
+
+```env
+NOTIFICATION_PROVIDERS=mock
+NOTIFICATION_PROVIDER=mock
+SEND_OWNER_NOTIFICATIONS=true
+SEND_APPROVAL_NOTIFICATIONS=true
+SEND_LEAD_SYNC_FAILURE_NOTIFICATIONS=true
+SEND_CUSTOMER_FOLLOWUP_EMAILS=false
+```
+
+`NOTIFICATION_PROVIDERS` supports:
+
+- `mock`
+- `slack`
+- `email`
+- `slack,email`
+
+`NOTIFICATION_PROVIDER` remains only for backward compatibility. If both are present, `NOTIFICATION_PROVIDERS` wins.
+
+Notification attempts are stored as tool calls and trace events. Missing provider config or send failures do not fail `/chat`.
+
+### Slack Notifications
+
+Create a Slack incoming webhook, then set:
+
+```env
+NOTIFICATION_PROVIDERS=slack
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+```
+
+To combine Slack and email:
+
+```env
+NOTIFICATION_PROVIDERS=slack,email
+```
+
+Slack notifications are sent for warm/hot leads, approval requests, and lead sync failures when enabled. Never commit the webhook URL.
+
+### Email Is Optional
+
+SmartLead Agent works without `RESEND_API_KEY`, `OWNER_EMAIL`, and `FROM_EMAIL`. If you do not want DNS/domain setup, skip email and use Slack or mock notifications.
+
+Real owner email requires Resend and a verified sending domain or approved test setup. Only configure email when you want that.
+
+Optional email env:
+
+
+```env
+NOTIFICATION_PROVIDERS=slack,email
+RESEND_API_KEY=...
+OWNER_EMAIL=owner@example.com
+FROM_EMAIL=SmartLead <noreply@yourdomain.com>
+OWNER_NAME=Business Owner
+```
+
+Email notifications go to the business owner/team email only. Customer follow-up emails are disabled by default:
+
+```env
+SEND_CUSTOMER_FOLLOWUP_EMAILS=false
+```
+
+Do not enable customer email sending without explicit business approval and configuration.
 
 ## Endpoints
 
@@ -353,9 +424,8 @@ SQLite is not recommended for deployed user/chat/lead/trace data. Deployment wil
 
 ## Still Mocked
 
-- Owner notification
 - Follow-up draft sending
-- Slack and email delivery
+- Customer follow-up email sending
 - CRM integrations
 
-The RAG retrieval is real and local. Lead sync can be real with Google Sheets when configured. Intent classification, lead extraction, and response generation are mocked in `MODEL_PROVIDER=mock` and Gemini-backed in `MODEL_PROVIDER=gemini`.
+The RAG retrieval is real and local. Lead sync can be real with Google Sheets when configured. Owner notifications can be real with Slack or Resend when configured. Intent classification, lead extraction, and response generation are mocked in `MODEL_PROVIDER=mock` and Gemini-backed in `MODEL_PROVIDER=gemini`.

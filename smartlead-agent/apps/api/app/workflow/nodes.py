@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import HumanApproval
-from app.services.mock_tools import create_followup_draft, create_or_update_lead_record, mock_send_owner_notification
+from app.services.integrations.notification_provider import get_notification_providers
+from app.services.mock_tools import create_followup_draft, create_or_update_lead_record
 from app.services.lead_service import merge_lead_info, score_lead_info, sync_lead_external
 from app.services.llm_service import (
     LLMCallResult,
@@ -204,6 +205,7 @@ def action_node(state: AgentState, db: Session) -> AgentState:
     try:
         lead_info = state.get("lead_info") or {}
         lead = None
+        owner_notification_attempted = False
         if _should_save_lead(state, lead_info):
             lead_started = perf_counter()
             lead = create_or_update_lead_record(
@@ -239,6 +241,8 @@ def action_node(state: AgentState, db: Session) -> AgentState:
                 {"tool_name": "create_or_update_lead_record", "status": "success", "lead_id": lead.id}
             )
             _sync_lead_if_enabled(state, db, lead)
+            db.refresh(lead)
+            owner_notification_attempted = _notify_owner_new_lead_if_enabled(state, db, lead)
 
         if state.get("requires_human_approval"):
             action_type = _approval_action_type(state["user_message"])
@@ -269,6 +273,7 @@ def action_node(state: AgentState, db: Session) -> AgentState:
                     "human_approval_id": approval.id,
                 }
             )
+            _notify_approval_if_enabled(state, db, approval)
             add_trace_event_to_state(
                 state,
                 agent_name=AGENT_NAME,
@@ -305,37 +310,20 @@ def action_node(state: AgentState, db: Session) -> AgentState:
             latency_ms=now_ms(followup_started),
         )
 
-        notification = None
-        if lead.email and lead.service_interest:
-            notify_started = perf_counter()
-            notification = mock_send_owner_notification(lead_info)
-            persist_tool_call(
-                db,
-                agent_run_id=state["agent_run_id"],
-                tool_name="mock_send_owner_notification",
-                tool_input=lead_info,
-                tool_output=notification,
-                status="success",
-                latency_ms=now_ms(notify_started),
-            )
-
         state["selected_action"] = "create_or_update_lead"
         state["tool_results"].extend(
             [
                 {"tool_name": "create_followup_draft", "status": "success", "result": followup},
             ]
         )
-        if notification:
+        if owner_notification_attempted:
             state["selected_action"] = "create_or_update_lead_and_notify_owner"
-            state["tool_results"].append(
-                {"tool_name": "mock_send_owner_notification", "status": "success", "result": notification}
-            )
         add_trace_event_to_state(
             state,
             agent_name=AGENT_NAME,
             node_name=node_name,
             input_summary="lead save threshold met",
-            output_summary=f"Saved lead {lead.id}; notification_sent={bool(notification)}.",
+            output_summary=f"Saved lead {lead.id}; owner_notification_attempted={owner_notification_attempted}.",
             status="success",
             latency_ms=now_ms(started),
         )
@@ -494,6 +482,14 @@ def _sync_lead_if_enabled(state: AgentState, db: Session, lead) -> None:
             status=status,
             latency_ms=now_ms(started),
         )
+        if status == "failed":
+            _notify_lead_sync_failure_if_enabled(
+                state,
+                db,
+                lead,
+                error=result.get("message") or "External lead sync failed.",
+                lead_sync_provider=provider_name,
+            )
     except Exception as exc:  # pragma: no cover - defensive integration path
         db.rollback()
         persist_tool_call(
@@ -517,6 +513,144 @@ def _sync_lead_if_enabled(state: AgentState, db: Session, lead) -> None:
             error_message=str(exc),
             latency_ms=now_ms(started),
         )
+        _notify_lead_sync_failure_if_enabled(
+            state,
+            db,
+            lead,
+            error=str(exc),
+            lead_sync_provider=provider_name,
+        )
+
+
+def _notify_owner_new_lead_if_enabled(state: AgentState, db: Session, lead) -> bool:
+    settings = get_settings()
+    if not settings.send_owner_notifications:
+        return False
+    if lead.lead_quality not in {"warm", "hot"}:
+        return False
+    if not any([lead.service_interest, lead.email, lead.budget, lead.business_type]):
+        return False
+    return _notify_all_providers(
+        state,
+        db,
+        event="owner",
+        payload=_safe_lead_notification_payload(lead),
+        call=lambda provider: provider.notify_owner_new_lead(
+            _safe_lead_notification_payload(lead),
+            context={"agent_run_id": state["agent_run_id"], "conversation_id": state["conversation_id"]},
+        ),
+    )
+
+
+def _notify_approval_if_enabled(state: AgentState, db: Session, approval: HumanApproval) -> bool:
+    settings = get_settings()
+    if not settings.send_approval_notifications:
+        return False
+    payload = {
+        "id": approval.id,
+        "agent_run_id": approval.agent_run_id,
+        "action_type": approval.action_type,
+        "reason": approval.reason,
+        "draft_response": approval.draft_response,
+        "status": approval.status,
+    }
+    return _notify_all_providers(
+        state,
+        db,
+        event="approval",
+        payload=_safe_approval_notification_payload(payload),
+        call=lambda provider: provider.notify_approval_required(
+            payload,
+            context={"agent_run_id": state["agent_run_id"], "conversation_id": state["conversation_id"]},
+        ),
+    )
+
+
+def _notify_lead_sync_failure_if_enabled(
+    state: AgentState,
+    db: Session,
+    lead,
+    *,
+    error: str,
+    lead_sync_provider: str,
+) -> bool:
+    settings = get_settings()
+    if not settings.send_lead_sync_failure_notifications:
+        return False
+    lead_payload = _safe_lead_notification_payload(lead)
+    return _notify_all_providers(
+        state,
+        db,
+        event="sync_failure",
+        payload={"lead": lead_payload, "lead_sync_provider": lead_sync_provider, "error": _safe_text(error)},
+        call=lambda provider: provider.notify_lead_sync_failure(
+            lead_payload,
+            _safe_text(error),
+            context={"lead_sync_provider": lead_sync_provider, "agent_run_id": state["agent_run_id"]},
+        ),
+    )
+
+
+def _notify_all_providers(state: AgentState, db: Session, *, event: str, payload: dict, call) -> bool:
+    attempted = False
+    for provider in get_notification_providers():
+        attempted = True
+        started = perf_counter()
+        tool_name = f"notify_{event}_{provider.provider_name}"
+        try:
+            result = call(provider)
+            output = _safe_notification_output(result)
+            status = _notification_tool_status(result.get("status"))
+            persist_tool_call(
+                db,
+                agent_run_id=state["agent_run_id"],
+                tool_name=tool_name,
+                tool_input=payload,
+                tool_output=output,
+                status=status,
+                latency_ms=now_ms(started),
+            )
+            state["tool_results"].append({"tool_name": tool_name, "status": status, "result": output})
+            add_trace_event_to_state(
+                state,
+                agent_name="Notification Agent",
+                node_name=tool_name,
+                input_summary=f"provider={provider.provider_name}; event={event}",
+                output_summary=f"{provider.provider_name} notification {result.get('status')}: {result.get('message')}",
+                tool_name=tool_name,
+                status=status,
+                latency_ms=now_ms(started),
+            )
+        except Exception as exc:  # pragma: no cover - defensive notification path
+            db.rollback()
+            output = {
+                "status": "failed",
+                "provider": provider.provider_name,
+                "message": _safe_text(str(exc)),
+                "external_id": None,
+            }
+            persist_tool_call(
+                db,
+                agent_run_id=state["agent_run_id"],
+                tool_name=tool_name,
+                tool_input=payload,
+                tool_output=output,
+                status="failed",
+                latency_ms=now_ms(started),
+            )
+            state.setdefault("errors", []).append({"node_name": tool_name, "error": _safe_text(str(exc))})
+            add_trace_event_to_state(
+                state,
+                agent_name="Notification Agent",
+                node_name=tool_name,
+                input_summary=f"provider={provider.provider_name}; event={event}",
+                output_summary="Notification failed, but chat continued.",
+                tool_name=tool_name,
+                status="failed",
+                error_message=_safe_text(str(exc)),
+                latency_ms=now_ms(started),
+            )
+    return attempted
 
 
 def _sync_tool_status(status: str | None) -> str:
@@ -544,6 +678,56 @@ def _safe_sync_output(result: dict) -> dict:
         "external_id": result.get("external_id"),
         "message": result.get("message"),
     }
+
+
+def _safe_lead_notification_payload(lead) -> dict:
+    return {
+        "id": lead.id,
+        "conversation_id": lead.conversation_id,
+        "name": lead.name,
+        "email": lead.email,
+        "phone": lead.phone,
+        "business_type": lead.business_type,
+        "service_interest": lead.service_interest,
+        "budget": lead.budget,
+        "timeline": lead.timeline,
+        "lead_score": lead.lead_score,
+        "lead_quality": lead.lead_quality,
+        "status": lead.status,
+        "external_sync_status": lead.external_sync_status,
+        "external_sync_provider": lead.external_sync_provider,
+    }
+
+
+def _safe_approval_notification_payload(approval: dict) -> dict:
+    return {
+        "id": approval.get("id"),
+        "agent_run_id": approval.get("agent_run_id"),
+        "action_type": approval.get("action_type"),
+        "reason": approval.get("reason"),
+        "status": approval.get("status"),
+    }
+
+
+def _safe_notification_output(result: dict) -> dict:
+    return {
+        "status": result.get("status"),
+        "provider": result.get("provider"),
+        "message": result.get("message"),
+        "external_id": result.get("external_id"),
+    }
+
+
+def _notification_tool_status(status: str | None) -> str:
+    if status in {"sent", "mock_sent"}:
+        return "success"
+    if status == "skipped":
+        return "skipped"
+    return "failed"
+
+
+def _safe_text(value: str, limit: int = 300) -> str:
+    return value.replace("\n", " ")[:limit]
 
 
 def _conversation_context(state: AgentState) -> str:

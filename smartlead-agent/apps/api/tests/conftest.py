@@ -9,9 +9,14 @@ os.environ["AUTH_ENABLED"] = "false"
 os.environ["ENVIRONMENT"] = "development"
 os.environ["ALLOW_DEV_ADMIN_BYPASS"] = "true"
 os.environ["LEAD_SYNC_PROVIDER"] = "mock"
+os.environ["NOTIFICATION_PROVIDERS"] = "mock"
 os.environ["NOTIFICATION_PROVIDER"] = "mock"
 os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"] = ""
 os.environ["GOOGLE_SHEETS_SPREADSHEET_ID"] = ""
+os.environ["SLACK_WEBHOOK_URL"] = ""
+os.environ["RESEND_API_KEY"] = ""
+os.environ["OWNER_EMAIL"] = ""
+os.environ["FROM_EMAIL"] = ""
 
 
 @pytest.fixture
@@ -28,9 +33,15 @@ def reset_settings_cache(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("ALLOW_DEV_ADMIN_BYPASS", "true")
     monkeypatch.setenv("LEAD_SYNC_PROVIDER", "mock")
+    monkeypatch.setenv("NOTIFICATION_PROVIDERS", "mock")
     monkeypatch.setenv("NOTIFICATION_PROVIDER", "mock")
     monkeypatch.setenv("GOOGLE_SHEETS_CREDENTIALS_JSON", "")
     monkeypatch.setenv("GOOGLE_SHEETS_SPREADSHEET_ID", "")
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "")
+    monkeypatch.setenv("RESEND_API_KEY", "")
+    monkeypatch.setenv("OWNER_EMAIL", "")
+    monkeypatch.setenv("FROM_EMAIL", "")
+    monkeypatch.setenv("SEND_CUSTOMER_FOLLOWUP_EMAILS", "false")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

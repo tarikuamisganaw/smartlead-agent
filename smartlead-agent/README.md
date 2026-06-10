@@ -2,7 +2,7 @@
 
 SmartLead Agent is a local MVP for an AI website assistant for small businesses.
 
-Week 4C includes the backend foundation, local document ingestion, local RAG over demo business markdown files, conversation memory, lead create/update behavior, trace persistence, optional Gemini provider support, a working chat UI, operational dashboard pages, an evaluation suite with latency/cost tracking, performance diagnostics, guest chat, signed-in chat history, auth/RBAC, and provider-based lead sync with mock mode plus optional Google Sheets support.
+Week 4C includes the backend foundation, local document ingestion, local RAG over demo business markdown files, conversation memory, lead create/update behavior, trace persistence, optional Gemini provider support, a working chat UI, operational dashboard pages, an evaluation suite with latency/cost tracking, performance diagnostics, guest chat, signed-in chat history, auth/RBAC, provider-based lead sync with mock mode plus optional Google Sheets support, and optional Slack/owner-email notifications.
 
 ## Structure
 
@@ -107,11 +107,13 @@ Included:
 - Guest chat and signed-in user chat history
 - Auth/RBAC foundation for guest chat, signed-in personal chat history, and owner-only dashboard access
 - Mock lead sync by default and optional Google Sheets lead sync when configured
+- Mock notifications by default and optional Slack/Resend owner notifications when configured
 - RAG index caching and performance diagnostics
 
 Not included yet:
 
-- Real Slack, email, or CRM integrations
+- CRM integrations
+- Customer email automation
 - Production-grade auth/session hardening
 - Payment
 - Production deployment
@@ -168,9 +170,51 @@ GOOGLE_SHEETS_WORKSHEET_NAME=Leads
 
 Owner dashboard users can check `http://localhost:3000/dashboard/integrations` and manually sync leads from `http://localhost:3000/dashboard/leads`.
 
+## Notifications
+
+SmartLead Agent does not require email integration. The recommended MVP setup is Google Sheets for lead storage/sync and Slack for owner/team alerts, with email left disabled or mocked.
+
+Recommended real demo:
+
+```env
+LEAD_SYNC_PROVIDER=google_sheets
+NOTIFICATION_PROVIDERS=slack
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+SEND_CUSTOMER_FOLLOWUP_EMAILS=false
+```
+
+Fully local notifications:
+
+```env
+NOTIFICATION_PROVIDERS=mock
+SEND_OWNER_NOTIFICATIONS=true
+SEND_APPROVAL_NOTIFICATIONS=true
+SEND_LEAD_SYNC_FAILURE_NOTIFICATIONS=true
+SEND_CUSTOMER_FOLLOWUP_EMAILS=false
+```
+
+Slack:
+
+```env
+NOTIFICATION_PROVIDERS=slack
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+```
+
+Resend owner email:
+
+```env
+NOTIFICATION_PROVIDERS=slack,email
+RESEND_API_KEY=...
+OWNER_EMAIL=owner@example.com
+FROM_EMAIL=SmartLead <noreply@yourdomain.com>
+OWNER_NAME=Business Owner
+```
+
+Email is optional and requires Resend plus a verified sending domain or approved test setup. If you do not want DNS/domain setup, skip email. The app works without `RESEND_API_KEY`, `OWNER_EMAIL`, and `FROM_EMAIL`.
+
+Multiple providers are supported with `NOTIFICATION_PROVIDERS=slack,email`. Provider attempts are stored as tool calls/traces, and failures do not fail the chat workflow. Secrets stay in backend environment variables and are not shown in the dashboard.
+
 ## Next
 
-- Optional real email notification
-- Optional Slack notification
 - Production database setup
 - Stronger auth/session security

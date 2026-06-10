@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,15 +35,41 @@ class Settings(BaseSettings):
     google_sheets_credentials_json: str | None = None
     google_sheets_spreadsheet_id: str | None = None
     google_sheets_worksheet_name: str = "Leads"
+    notification_providers: str | None = None
     notification_provider: str = "mock"
     slack_webhook_url: str | None = None
     resend_api_key: str | None = None
     owner_email: str | None = None
     from_email: str | None = None
+    owner_name: str = "Business Owner"
+    send_owner_notifications: bool = True
+    send_approval_notifications: bool = True
+    send_lead_sync_failure_notifications: bool = True
+    send_customer_followup_emails: bool = False
     sync_leads_automatically: bool = True
     sync_only_complete_leads: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @field_validator(
+        "agent_fast_mode",
+        "rag_cache_enabled",
+        "auth_enabled",
+        "allow_dev_admin_bypass",
+        "reset_db_allowed",
+        "send_owner_notifications",
+        "send_approval_notifications",
+        "send_lead_sync_failure_notifications",
+        "send_customer_followup_emails",
+        "sync_leads_automatically",
+        "sync_only_complete_leads",
+        mode="before",
+    )
+    @classmethod
+    def blank_bool_uses_default(cls, value, info: ValidationInfo):
+        if value == "":
+            return cls.model_fields[info.field_name].default
+        return value
 
 
 @lru_cache
