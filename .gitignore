@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+out/
+*.pyc
+*.db
+*.sqlite
+*.sqlite3
+apps/api/eval_results/

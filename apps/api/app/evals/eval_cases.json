@@ -1,0 +1,226 @@
+[
+  {
+    "id": "pricing_seo_001",
+    "input": "How much does SEO cost?",
+    "expected_intent": "pricing_question",
+    "expected_needs_rag": true,
+    "expected_sources": ["pricing.md"],
+    "should_create_lead": false,
+    "expected_human_approval": false
+  },
+  {
+    "id": "pricing_website_001",
+    "input": "How much does website design cost?",
+    "expected_intent": "pricing_question",
+    "expected_needs_rag": true,
+    "expected_sources": ["pricing.md"],
+    "should_create_lead": false,
+    "expected_human_approval": false
+  },
+  {
+    "id": "pricing_ads_001",
+    "input": "What is the cost for paid ads setup?",
+    "expected_intent": "pricing_question",
+    "expected_needs_rag": true,
+    "expected_sources": ["pricing.md"],
+    "should_create_lead": false,
+    "expected_human_approval": false
+  },
+  {
+    "id": "pricing_automation_001",
+    "input": "How much is AI automation setup?",
+    "expected_intent": "pricing_question",
+    "expected_needs_rag": true,
+    "expected_sources": ["pricing.md"],
+    "should_create_lead": false,
+    "expected_human_approval": false
+  },
+  {
+    "id": "services_website_001",
+    "input": "Do you build websites?",
+    "expected_intent": "faq_question",
+    "expected_needs_rag": true,
+    "expected_sources": ["services.md"],
+    "should_create_lead": false,
+    "expected_human_approval": false
+  },
+  {
+    "id": "services_ads_001",
+    "input": "Do you offer paid ads?",
+    "expected_intent": "faq_question",
+    "expected_needs_rag": true,
+    "expected_sources": ["services.md"],
+    "should_create_lead": false,
+    "expected_human_approval": false
+  },
+  {
+    "id": "services_automation_001",
+    "input": "Can you explain your AI automation services?",
+    "expected_intent": "faq_question",
+    "expected_needs_rag": true,
+    "expected_sources": ["services.md"],
+    "should_create_lead": false,
+    "expected_human_approval": false
+  },
+  {
+    "id": "case_studies_001",
+    "input": "What case studies do you have for gyms?",
+    "expected_intent": "faq_question",
+    "expected_needs_rag": true,
+    "expected_sources": ["case-studies.md"],
+    "should_create_lead": false,
+    "expected_human_approval": false
+  },
+  {
+    "id": "onboarding_001",
+    "input": "What happens after a lead is captured?",
+    "expected_intent": "faq_question",
+    "expected_needs_rag": true,
+    "expected_sources": ["onboarding.md"],
+    "should_create_lead": false,
+    "expected_human_approval": false
+  },
+  {
+    "id": "refund_policy_001",
+    "input": "What is the refund policy?",
+    "expected_intent": "discount_request",
+    "expected_needs_rag": true,
+    "expected_sources": ["refund-policy.md"],
+    "should_create_lead": false,
+    "expected_human_approval": true
+  },
+  {
+    "id": "lead_seo_gym_001",
+    "input": "I need SEO for my gym. My budget is $2000 and I want to start next month.",
+    "expected_intent": "lead_inquiry",
+    "expected_needs_rag": true,
+    "expected_service_interest": "SEO",
+    "expected_business_type": "gym",
+    "expected_budget": 2000,
+    "should_create_lead": true,
+    "expected_human_approval": false
+  },
+  {
+    "id": "lead_web_restaurant_001",
+    "input": "I need a website for my restaurant. My budget is $3000 and I want to start this week.",
+    "expected_intent": "lead_inquiry",
+    "expected_needs_rag": true,
+    "expected_service_interest": "website design",
+    "expected_business_type": "restaurant",
+    "expected_budget": 3000,
+    "should_create_lead": true,
+    "expected_human_approval": false
+  },
+  {
+    "id": "lead_ads_ecommerce_001",
+    "input": "Need help with paid ads for my ecommerce store. Budget is $5000.",
+    "expected_intent": "lead_inquiry",
+    "expected_needs_rag": true,
+    "expected_service_interest": "paid ads",
+    "expected_business_type": "ecommerce",
+    "expected_budget": 5000,
+    "should_create_lead": true,
+    "expected_human_approval": false
+  },
+  {
+    "id": "lead_auto_clinic_001",
+    "input": "I want automation for my clinic and budget is 1200.",
+    "expected_intent": "lead_inquiry",
+    "expected_needs_rag": true,
+    "expected_service_interest": "AI automation",
+    "expected_business_type": "clinic",
+    "expected_budget": 1200,
+    "should_create_lead": true,
+    "expected_human_approval": false
+  },
+  {
+    "id": "lead_marketing_coach_001",
+    "input": "I need marketing for my coaching business. My budget is $800.",
+    "expected_intent": "lead_inquiry",
+    "expected_needs_rag": true,
+    "expected_service_interest": "marketing",
+    "expected_business_type": "coach",
+    "expected_budget": 800,
+    "should_create_lead": true,
+    "expected_human_approval": false
+  },
+  {
+    "id": "multiturn_lead_001",
+    "turns": [
+      "I need SEO for my gym. My budget is $2000.",
+      "My name is Sara and my email is sara@example.com"
+    ],
+    "expected_final_lead": {
+      "service_interest": "SEO",
+      "business_type": "gym",
+      "budget": 2000,
+      "name": "Sara",
+      "email": "sara@example.com"
+    },
+    "should_create_duplicate_leads": false,
+    "expected_human_approval": false
+  },
+  {
+    "id": "multiturn_lead_phone_001",
+    "turns": [
+      "I need a website for my restaurant. My budget is $3000.",
+      "I am Omar and my email is omar@example.com and phone is 555-123-4567"
+    ],
+    "expected_final_lead": {
+      "service_interest": "website design",
+      "business_type": "restaurant",
+      "budget": 3000,
+      "name": "Omar",
+      "email": "omar@example.com",
+      "phone": "555-123-4567"
+    },
+    "should_create_duplicate_leads": false,
+    "expected_human_approval": false
+  },
+  {
+    "id": "approval_discount_001",
+    "input": "Can you give me 70% discount and promise results?",
+    "expected_intent": "discount_request",
+    "expected_needs_rag": true,
+    "expected_sources": ["refund-policy.md"],
+    "expected_human_approval": true,
+    "should_offer_discount": false,
+    "should_promise_results": false
+  },
+  {
+    "id": "approval_refund_001",
+    "input": "I want a refund for my campaign.",
+    "expected_intent": "discount_request",
+    "expected_needs_rag": true,
+    "expected_sources": ["refund-policy.md"],
+    "expected_human_approval": true,
+    "should_offer_discount": false,
+    "should_promise_results": false
+  },
+  {
+    "id": "approval_guarantee_001",
+    "input": "Can you guarantee first page rankings?",
+    "expected_intent": "discount_request",
+    "expected_needs_rag": true,
+    "expected_sources": ["refund-policy.md"],
+    "expected_human_approval": true,
+    "should_offer_discount": false,
+    "should_promise_results": false
+  },
+  {
+    "id": "unknown_001",
+    "input": "Can you help me with something?",
+    "expected_intent": "unknown",
+    "expected_needs_rag": false,
+    "should_create_lead": false,
+    "expected_human_approval": false
+  },
+  {
+    "id": "support_001",
+    "input": "The form on my site is broken and I need support.",
+    "expected_intent": "support_request",
+    "expected_needs_rag": false,
+    "should_create_lead": false,
+    "expected_human_approval": false
+  }
+]
