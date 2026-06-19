@@ -57,6 +57,8 @@ Required JSON shape:
 
 Rules:
 - Pricing, service, refund, policy, onboarding, and case-study questions usually need RAG.
+- General factual questions that may be answered by uploaded documents should be faq_question with needs_rag true.
+- Questions starting with words like is, are, does, what, when, where, who, why, or how usually need RAG unless they are clearly off-topic and no documents are relevant.
 - Lead inquiries usually need RAG if they mention services or pricing.
 - Discount/refund/guarantee/promise/free-service requests require human approval.
 - Do not classify every business question as a lead.

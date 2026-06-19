@@ -37,6 +37,10 @@ def intent_router_node(state: AgentState) -> AgentState:
             state["intent"] = "lead_inquiry"
             state["intent_confidence"] = 0.76
             state["needs_rag"] = False
+        elif state["intent"] == "unknown" and _message_looks_like_document_question(state["user_message"]):
+            state["intent"] = "faq_question"
+            state["intent_confidence"] = max(float(state.get("intent_confidence") or 0), 0.7)
+            state["needs_rag"] = True
         if result.requires_human_approval:
             state["approval_reason"] = result.reason
         add_trace_event_to_state(
@@ -74,7 +78,7 @@ def rag_node(state: AgentState, db: Session) -> AgentState:
             )
             return state
 
-        query = f"{state['user_message']} intent:{state.get('intent') or 'unknown'}"
+        query = state["user_message"]
         docs = search_docs(db, query, top_k=4)
         state["retrieved_docs"] = docs
         persist_tool_call(
@@ -387,6 +391,35 @@ def _message_has_lead_fields(message: str) -> bool:
         or "$" in message
         or any(keyword in lowered for keyword in ("my name is", "i am", "i'm", "budget", "phone", "email"))
     )
+
+
+def _message_looks_like_document_question(message: str) -> bool:
+    lowered = message.strip().lower()
+    if not lowered:
+        return False
+    question_starts = (
+        "am ",
+        "are ",
+        "can ",
+        "could ",
+        "did ",
+        "do ",
+        "does ",
+        "how ",
+        "is ",
+        "should ",
+        "tell me ",
+        "was ",
+        "were ",
+        "what ",
+        "when ",
+        "where ",
+        "which ",
+        "who ",
+        "why ",
+        "would ",
+    )
+    return lowered.endswith("?") or lowered.startswith(question_starts)
 
 
 def _has_meaningful_lead_data(lead_info: dict) -> bool:

@@ -117,6 +117,26 @@ async def test_uploaded_agenda_document_is_answered_directly() -> None:
     assert "Q2 financial reports" in final_response
     assert "marketing strategy" in final_response
     assert "next quarter" in final_response
+    assert "----" not in final_response
+
+
+@pytest.mark.anyio
+async def test_factual_uploaded_document_question_routes_to_rag() -> None:
+    doe_content = (
+        "The names John Doe for males, Jane Doe or Jane Roe for females, "
+        "and Baby Doe for children are used as placeholder names when true identity is unknown."
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post("/documents/upload", json={"title": "john-doe.txt", "content": doe_content})
+        chat = await client.post("/chat", json={"message": "is the name john doe for male?"})
+        trace = await client.get(f"/agent-runs/{chat.json()['agent_run_id']}/trace")
+
+    assert chat.status_code == 200
+    body = chat.json()
+    assert body["intent"] == "faq_question"
+    assert "John Doe" in body["final_response"]
+    assert "male" in body["final_response"].lower()
+    assert any(event["node_name"] == "rag_node" and event["status"] == "success" for event in trace.json()["trace"])
 
 
 @pytest.mark.anyio

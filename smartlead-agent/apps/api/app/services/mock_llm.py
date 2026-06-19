@@ -25,6 +25,28 @@ DISCOUNT_KEYWORDS = (
     "free service",
 )
 SUPPORT_KEYWORDS = ("support", "problem", "issue", "broken")
+QUESTION_STARTS = (
+    "am ",
+    "are ",
+    "can ",
+    "could ",
+    "did ",
+    "do ",
+    "does ",
+    "how ",
+    "is ",
+    "should ",
+    "tell me ",
+    "was ",
+    "were ",
+    "what ",
+    "when ",
+    "where ",
+    "which ",
+    "who ",
+    "why ",
+    "would ",
+)
 
 
 def _contains_any(message: str, keywords: tuple[str, ...]) -> bool:
@@ -71,7 +93,7 @@ def mock_classify_intent(message: str) -> IntentResult:
             reason="Message describes a support issue.",
         )
 
-    if any(token in lowered for token in ("what", "when", "where", "who", "can you", "do you", "how")):
+    if lowered.strip().endswith("?") or lowered.strip().startswith(QUESTION_STARTS):
         return IntentResult(
             intent="faq_question",
             confidence=0.72,
@@ -311,7 +333,7 @@ def _doc_titles(docs: list[dict]) -> str:
 def _first_content_line(text: str) -> str | None:
     for line in text.splitlines():
         cleaned = line.strip().strip("#").strip("-").strip()
-        if cleaned:
+        if cleaned and not _is_separator_line(cleaned):
             return cleaned
     return None
 
@@ -320,12 +342,19 @@ def _list_items(text: str) -> list[str]:
     items = []
     for line in text.splitlines():
         cleaned = line.strip()
+        if _is_separator_line(cleaned):
+            continue
         match = re.match(r"^(?:\d+\.|[-*])\s*(.+)$", cleaned)
         if match:
             item = match.group(1).strip()
-            if item:
+            if item and not _is_separator_line(item):
                 items.append(item)
     return items
+
+
+def _is_separator_line(text: str) -> bool:
+    stripped = text.strip()
+    return bool(stripped) and all(character in "-_=*" for character in stripped)
 
 
 def _relevant_content_lines(user_message: str, text: str) -> list[str]:
