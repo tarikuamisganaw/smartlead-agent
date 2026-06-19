@@ -168,9 +168,8 @@ def mock_generate_final_response(state: AgentState) -> FinalResponse:
 
     if intent == "faq_question":
         if docs:
-            titles = _doc_titles(docs)
             return FinalResponse(
-                message=f"Based on the business documents ({titles}), the team can help confirm the best next step after a short discovery call.",
+                message=_faq_response_from_docs(state.get("user_message", ""), docs),
                 next_step="Use retrieved documentation to answer the question.",
             )
         return FinalResponse(
@@ -244,6 +243,27 @@ def _pricing_response_from_docs(docs: list[dict]) -> str:
     return "I could not find a specific price in the business documents, but I can collect your details and have the team confirm."
 
 
+def _faq_response_from_docs(user_message: str, docs: list[dict]) -> str:
+    top_doc = docs[0]
+    title = top_doc.get("title") or "the retrieved document"
+    content = (top_doc.get("content") or "").strip()
+    if not content:
+        titles = _doc_titles(docs)
+        return f"I found relevant documents ({titles}), but they did not include enough readable text to answer directly."
+
+    heading = _first_content_line(content) or title
+    list_items = _list_items(content)
+    if list_items:
+        joined = "; ".join(list_items[:5])
+        return f"According to {title}, {heading} includes: {joined}."
+
+    relevant_lines = _relevant_content_lines(user_message, content)
+    if relevant_lines:
+        return f"According to {title}, {' '.join(relevant_lines[:3])}"
+
+    return f"According to {title}, {_compact_text(content, limit=420)}"
+
+
 def _pricing_hint_for_service(service: str, docs: list[dict]) -> str | None:
     if not docs:
         return None
@@ -286,3 +306,47 @@ def _price_snippets(text: str) -> list[str]:
 def _doc_titles(docs: list[dict]) -> str:
     titles = [doc.get("title") for doc in docs if doc.get("title")]
     return ", ".join(dict.fromkeys(titles))
+
+
+def _first_content_line(text: str) -> str | None:
+    for line in text.splitlines():
+        cleaned = line.strip().strip("#").strip("-").strip()
+        if cleaned:
+            return cleaned
+    return None
+
+
+def _list_items(text: str) -> list[str]:
+    items = []
+    for line in text.splitlines():
+        cleaned = line.strip()
+        match = re.match(r"^(?:\d+\.|[-*])\s*(.+)$", cleaned)
+        if match:
+            item = match.group(1).strip()
+            if item:
+                items.append(item)
+    return items
+
+
+def _relevant_content_lines(user_message: str, text: str) -> list[str]:
+    query_tokens = {
+        token
+        for token in re.findall(r"[a-zA-Z0-9]+", user_message.lower())
+        if token not in {"a", "an", "and", "is", "it", "of", "the", "to", "what", "you"}
+    }
+    lines = []
+    for line in text.splitlines():
+        cleaned = line.strip().strip("#").strip()
+        if not cleaned:
+            continue
+        line_tokens = set(re.findall(r"[a-zA-Z0-9]+", cleaned.lower()))
+        if query_tokens & line_tokens:
+            lines.append(cleaned)
+    return lines
+
+
+def _compact_text(text: str, limit: int) -> str:
+    compacted = " ".join(line.strip() for line in text.splitlines() if line.strip())
+    if len(compacted) <= limit:
+        return compacted
+    return f"{compacted[: limit - 1].rstrip()}..."

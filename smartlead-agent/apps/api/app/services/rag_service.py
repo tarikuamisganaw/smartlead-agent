@@ -78,11 +78,7 @@ class LocalRagIndex:
         else:
             scores = self._fallback_scores(query)
 
-        ranked = sorted(
-            ((score + _keyword_boost(query, chunk), chunk) for score, chunk in zip(scores, self.chunks, strict=True)),
-            key=lambda item: item[0],
-            reverse=True,
-        )
+        ranked = sorted(zip(scores, self.chunks, strict=True), key=lambda item: item[0], reverse=True)
         results = []
         for score, chunk in ranked[:top_k]:
             if score <= 0:
@@ -193,11 +189,11 @@ def _search_docs_pgvector(db: Session, query: str, top_k: int = 4) -> list[dict]
         for row in rows
     ]
     ranked = sorted(
-        ((score + _keyword_boost(query, chunk), score, chunk) for score, chunk in candidates),
+        ((score, chunk) for score, chunk in candidates),
         key=lambda item: item[0],
         reverse=True,
     )
-    return [_chunk_to_result(chunk, combined_score) for combined_score, _, chunk in ranked[:top_k]]
+    return [_chunk_to_result(chunk, score) for score, chunk in ranked[:top_k]]
 
 
 def invalidate_rag_index() -> None:

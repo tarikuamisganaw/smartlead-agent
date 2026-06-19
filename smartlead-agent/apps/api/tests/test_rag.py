@@ -97,6 +97,29 @@ async def test_specific_uploaded_pricing_document_beats_generic_pricing_doc() ->
 
 
 @pytest.mark.anyio
+async def test_uploaded_agenda_document_is_answered_directly() -> None:
+    agenda_content = (
+        "Meeting Agenda - June 15, 2026\n"
+        "-------------------------------\n"
+        "1. Review Q2 financial reports\n"
+        "2. Discuss marketing strategy for new product\n"
+        "3. Assign tasks for next quarter"
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post("/documents/upload", json={"title": "sample3.txt", "content": agenda_content})
+        search = await client.post("/rag/search", json={"query": "what is meeting agenda", "top_k": 4})
+        chat = await client.post("/chat", json={"message": "what is meeting agenda"})
+
+    assert search.status_code == 200
+    assert search.json()["results"][0]["title"] == "sample3.txt"
+    assert chat.status_code == 200
+    final_response = chat.json()["final_response"]
+    assert "Q2 financial reports" in final_response
+    assert "marketing strategy" in final_response
+    assert "next quarter" in final_response
+
+
+@pytest.mark.anyio
 async def test_document_upload_rejects_unsupported_file_type() -> None:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(

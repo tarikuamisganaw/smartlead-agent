@@ -17,12 +17,14 @@ if database_url.startswith("postgres://"):
 elif database_url.startswith("postgresql://"):
     database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
-connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
+if database_url.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
+elif database_url.startswith("postgresql+psycopg"):
+    connect_args = {"prepare_threshold": None}
+else:
+    connect_args = {}
 
-engine = create_engine(
-                        settings.database_url, 
-                        connect_args={"prepare_threshold": None}
-                                                    )
+engine = create_engine(database_url, connect_args=connect_args)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
