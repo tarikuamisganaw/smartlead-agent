@@ -1,6 +1,6 @@
 # SmartLead Agent
 
-SmartLead Agent is a production-style AI sales assistant for service businesses. It combines a customer-facing chat experience with a FastAPI agent backend, retrieval over business documents, lead qualification, human approval routing, owner dashboards, traceability, evaluations, and optional external integrations.
+SmartLead Agent is an AI sales assistant for service businesses. It combines a customer-facing chat experience with a FastAPI agent backend, retrieval over business documents, lead qualification, human approval routing, owner dashboards, traceability, evaluations, and optional external integrations.
 
 The project is built to demonstrate the engineering patterns a real business would need before trusting an AI assistant with live prospects: deterministic local development, auditable agent runs, role-based access, safe mock integrations, configurable model providers, and measurable latency/cost behavior.
 
@@ -42,11 +42,11 @@ Visitor chat
 | Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS |
 | Backend | FastAPI, Pydantic, SQLAlchemy |
 | Agent workflow | LangGraph |
-| LLM providers | Deterministic mock provider, optional Gemini provider |
-| Retrieval | Local TF-IDF, optional Supabase/Postgres `pgvector` |
+| LLM providers |Gemini provider |
+| Retrieval | Supabase/Postgres `pgvector` |
 | Storage | SQLite for local development, Postgres-compatible `DATABASE_URL` |
 | Auth | JWT bearer tokens, organization membership roles, guest sessions |
-| Integrations | Mock mode, Google Sheets, Slack, optional Resend email |
+| Integrations | Google Sheets, Slack, optional Resend email |
 | Quality | Pytest, eval runner, performance smoke test, dashboard diagnostics |
 
 ## Core Product Surfaces
@@ -205,16 +205,7 @@ cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env.local
 ```
 
-Recommended local defaults:
 
-```env
-DATABASE_URL=sqlite:///./smartlead.db
-MODEL_PROVIDER=mock
-RAG_PROVIDER=local
-AUTH_ENABLED=true
-LEAD_SYNC_PROVIDER=mock
-NOTIFICATION_PROVIDERS=mock
-```
 
 Optional production-style services:
 
@@ -226,17 +217,15 @@ Optional production-style services:
 
 ## Production Readiness Notes
 
-This project is intentionally built with production concerns visible instead of hidden:
+This project is intentionally built with concerns visible instead of hidden:
 
 - Secrets are environment-driven and excluded from the dashboard.
-- Integrations default to mock providers so demos and tests do not call external systems accidentally.
 - Agent traces and tool calls are persisted for debugging and auditability.
 - LLM calls include timeout and fallback behavior.
 - Admin data is protected behind owner-role checks when auth is enabled.
 - Eval and performance tooling are included to catch behavior and latency regressions.
 
-Before running this as a live customer-facing product, the remaining hardening work would be secure cookie/session auth, deployment infrastructure, managed secrets, rate limiting, full migration tooling, production monitoring, and real CRM/payment integrations.
 
 ## Why This Project Matters
 
-SmartLead Agent is more than a chat widget. It shows how to wrap an AI assistant in the operational systems a business actually needs: knowledge retrieval, lead capture, persistence, review workflows, observability, evaluation, and integration boundaries. For recruiters and engineering reviewers, the value is in the full-stack product thinking and the production-minded architecture, not just the prompt.
+SmartLead Agent is more than a chat widget. It shows how to wrap an AI assistant in the operational systems a business actually needs: knowledge retrieval, lead capture, persistence, review workflows, observability, evaluation, and integration boundaries.

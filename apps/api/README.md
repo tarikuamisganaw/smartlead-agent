@@ -1,8 +1,8 @@
 # SmartLead Agent API
 
-FastAPI backend for SmartLead Agent, a production-style AI sales assistant for service businesses. The API powers customer chat, agent orchestration, document retrieval, lead qualification, owner dashboards, human approvals, evaluation runs, and external integration boundaries.
+FastAPI backend for SmartLead Agent,an AI sales assistant for service businesses. The API powers customer chat, agent orchestration, document retrieval, lead qualification, owner dashboards, human approvals, evaluation runs, and external integration boundaries.
 
-The backend is designed to be credible in a real operating environment: deterministic mock mode for tests and demos, configurable LLM providers, persistent traces and tool calls, role-aware data access, safe integration fallbacks, and a database abstraction that can run locally on SQLite or against Postgres/Supabase.
+The backend is designed to be credible in a real operating environment: configurable LLM providers, persistent traces and tool calls, role-aware data access, safe integration fallbacks, and a database abstraction that can run locally on Postgres/Supabase.
 
 ## Backend Capabilities
 
@@ -11,10 +11,9 @@ The backend is designed to be credible in a real operating environment: determin
 - Multi-turn lead memory that updates existing leads instead of duplicating them.
 - Owner-only dashboard endpoints for leads, conversations, agent runs, traces, approvals, documents, evals, integrations, and performance.
 - Guest sessions, authenticated users, anonymous-session claiming, and owner RBAC.
-- Local TF-IDF RAG by default, with optional Supabase `pgvector` retrieval and local fallback.
-- Mock LLM provider for deterministic local behavior, with optional Gemini provider for model-backed runs.
-- Google Sheets lead sync provider with safe mock default.
-- Slack notification provider, mock notification provider, and optional Resend owner email provider.
+- with Supabase `pgvector` retrieval and local fallback.
+- Google Sheets lead sync provider.
+- Slack notification provider, and optional Resend owner email provider.
 - Persisted model metadata, estimated cost, latency, tool calls, and trace events for each agent run.
 - Regression eval runner and performance smoke test.
 
@@ -76,25 +75,6 @@ Create `apps/api/.env` from the example file:
 cp .env.example .env
 ```
 
-Recommended local demo values:
-
-```env
-DATABASE_URL=sqlite:///./smartlead.db
-FRONTEND_URL=http://localhost:3000
-ENVIRONMENT=development
-CORS_ORIGINS=http://localhost:3000
-
-MODEL_PROVIDER=mock
-RAG_PROVIDER=local
-AUTH_ENABLED=true
-JWT_SECRET_KEY=dev-secret-change-me
-
-LEAD_SYNC_PROVIDER=mock
-NOTIFICATION_PROVIDERS=mock
-SYNC_LEADS_AUTOMATICALLY=true
-```
-
-The checked-in `.env.example` also includes optional Gemini, Supabase, Google Sheets, Slack, and Resend settings.
 
 ## Ingest Demo Documents
 
@@ -184,12 +164,6 @@ User conversation history:
 
 ## LLM Provider Modes
 
-Mock mode is deterministic and best for tests, local demos, and CI:
-
-```env
-MODEL_PROVIDER=mock
-```
-
 Gemini mode enables model-backed classification, extraction, and response generation:
 
 ```env
@@ -207,8 +181,7 @@ If Gemini fails during `/chat`, the workflow falls back to safe mock behavior an
 Local mode uses the ingested documents and a local retrieval index:
 
 ```env
-DATABASE_URL=sqlite:///./smartlead.db
-RAG_PROVIDER=local
+
 ```
 
 Supabase/Postgres mode uses SQLAlchemy storage plus optional `pgvector` retrieval:
@@ -264,14 +237,6 @@ Share the sheet with the service-account email. The provider appends a row on fi
 
 ## Notifications
 
-Local notification mode:
-
-```env
-NOTIFICATION_PROVIDERS=mock
-SEND_OWNER_NOTIFICATIONS=true
-SEND_APPROVAL_NOTIFICATIONS=true
-SEND_LEAD_SYNC_FAILURE_NOTIFICATIONS=true
-SEND_CUSTOMER_FOLLOWUP_EMAILS=false
 ```
 
 Slack owner/team notifications:
@@ -350,24 +315,16 @@ python -m app.scripts.reset_dev_db --yes
 
 The script refuses production-style resets unless explicitly enabled, creates a timestamped SQLite backup when possible, recreates tables, creates the default organization, optionally creates a demo owner from env vars, and re-ingests demo documents.
 
-## Production Readiness Notes
 
-Implemented production-minded safeguards:
+
+## Implemented safeguards:
 
 - Environment-driven configuration
 - Auth/RBAC checks on admin data
-- Mock-first external providers
 - LLM timeout and fallback behavior
 - Persistent traces and tool calls
 - Evals and performance diagnostics
 - Postgres-compatible database configuration
-- Optional vector retrieval with local fallback
+- vector retrieval with local fallback
 
-Recommended before live production:
 
-- Secure cookie or managed auth provider
-- Rate limiting and abuse protection
-- Migration tooling such as Alembic
-- Managed secrets and deployment infrastructure
-- Centralized logging, alerting, and metrics
-- Real CRM integration and customer email automation if required

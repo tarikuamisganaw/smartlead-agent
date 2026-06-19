@@ -1,6 +1,6 @@
 # SmartLead Agent Web
 
-Next.js frontend for SmartLead Agent, a production-style AI sales assistant for service businesses. The web app includes the customer chat experience, guest and signed-in conversation history, owner dashboards, lead management, trace inspection, document tooling, integration status, and eval visibility.
+Next.js frontend for SmartLead Agent,an  AI sales assistant for service businesses. The web app includes the customer chat experience, guest and signed-in conversation history, owner dashboards, lead management, trace inspection, document tooling, integration status, and eval visibility.
 
 The frontend is designed as an operational product surface rather than a static demo: it connects to real API endpoints, handles auth-aware dashboard access, supports anonymous sessions, and exposes the observability screens needed to understand what the agent did.
 
@@ -161,9 +161,7 @@ Auth-enabled requests send:
 - `Authorization: Bearer <token>` for signed-in users
 - `X-Anonymous-Session-Token` for guest sessions
 
-## Production Readiness Notes
-
-Implemented:
+##  Implemented:
 
 - Typed API boundary for backend responses.
 - Auth-aware owner dashboard access.
@@ -171,11 +169,3 @@ Implemented:
 - Reusable loading, empty, error, table, badge, and dashboard components.
 - Operational screens for traces, integrations, documents, evals, and lead sync.
 - Build and lint scripts through Next.js.
-
-Recommended before live production:
-
-- Replace localStorage bearer tokens with secure cookies or managed auth.
-- Add end-to-end tests for the core chat and owner dashboard flows.
-- Add deployment-specific environment validation.
-- Connect production monitoring and frontend error reporting.
-- Complete visual QA across target browsers and devices.
