@@ -4,6 +4,16 @@ sdk: docker
 app_port: 7860
 ---
 
+
+---
+title: Smart Lead Assistant
+emoji: 📊
+colorFrom: pink
+colorTo: pink
+sdk: docker
+pinned: false
+license: mit
+---
 # SmartLead Agent API
 
 This is the Hugging Face Spaces metadata README for deploying the FastAPI backend as a Docker Space.

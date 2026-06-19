@@ -4,6 +4,12 @@ SmartLead Agent is an AI sales assistant for service businesses. It combines a c
 
 The project is built to demonstrate the engineering patterns a real business would need before trusting an AI assistant with live prospects: deterministic local development, auditable agent runs, role-based access, safe mock integrations, configurable model providers, and measurable latency/cost behavior.
 
+# Smart Lead Assistant
+
+🚀 **[Click here for the Live Demo](https://smartlead-agent.vercel.app)**
+
+
+
 ## What It Demonstrates
 
 - AI agent workflow using LangGraph nodes for intent routing, RAG, lead extraction, scoring, safety checks, actions, and final response generation.
