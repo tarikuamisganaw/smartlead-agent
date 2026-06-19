@@ -1,18 +1,78 @@
 # SmartLead Agent
 
-SmartLead Agent is a local MVP for an AI website assistant for small businesses.
+SmartLead Agent is a production-style AI sales assistant for service businesses. It combines a customer-facing chat experience with a FastAPI agent backend, retrieval over business documents, lead qualification, human approval routing, owner dashboards, traceability, evaluations, and optional external integrations.
 
-Week 4C includes the backend foundation, local document ingestion, local RAG over demo business markdown files, conversation memory, lead create/update behavior, trace persistence, optional Gemini provider support, a working chat UI, operational dashboard pages, an evaluation suite with latency/cost tracking, performance diagnostics, guest chat, signed-in chat history, auth/RBAC, provider-based lead sync with mock mode plus optional Google Sheets support, and optional Slack/owner-email notifications.
+The project is built to demonstrate the engineering patterns a real business would need before trusting an AI assistant with live prospects: deterministic local development, auditable agent runs, role-based access, safe mock integrations, configurable model providers, and measurable latency/cost behavior.
 
-## Structure
+## What It Demonstrates
+
+- AI agent workflow using LangGraph nodes for intent routing, RAG, lead extraction, scoring, safety checks, actions, and final response generation.
+- Retrieval-augmented answers over local markdown business documents, with optional Supabase `pgvector` retrieval and local fallback.
+- Multi-turn conversation memory that updates one lead record across a prospect's journey.
+- Lead scoring, lead quality classification, and owner-facing lead management.
+- Human approval workflow for risky requests such as discounts, refunds, guarantees, and promised results.
+- Persistent traces, tool calls, latency, model metadata, and estimated cost for each agent run.
+- Guest chat, registered user chat history, owner-only dashboard access, and RBAC-backed API protection.
+- Provider-based integrations for mock mode, Google Sheets lead sync, Slack notifications, and optional Resend owner email.
+- Evaluation suite covering routing, retrieval, lead extraction, approval behavior, tool calls, latency, and estimated cost.
+
+## Architecture
 
 ```text
-apps/api/        FastAPI backend
-apps/web/        Next.js frontend
-data/            Demo business markdown docs
+apps/api/        FastAPI, LangGraph, SQLAlchemy, RAG, auth, integrations, evals
+apps/web/        Next.js 14, TypeScript, dashboard, chat, auth screens
+data/            Demo business knowledge base used for local RAG
+docs/            Demo and operator checklists
 ```
 
-## Run The API
+```text
+Visitor chat
+    -> Next.js web app
+    -> FastAPI /chat
+    -> LangGraph agent workflow
+    -> RAG, lead extraction, safety, actions
+    -> SQLite or Postgres persistence
+    -> dashboard, traces, evals, sync, notifications
+```
+
+## Tech Stack
+
+| Area | Implementation |
+| --- | --- |
+| Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS |
+| Backend | FastAPI, Pydantic, SQLAlchemy |
+| Agent workflow | LangGraph |
+| LLM providers | Deterministic mock provider, optional Gemini provider |
+| Retrieval | Local TF-IDF, optional Supabase/Postgres `pgvector` |
+| Storage | SQLite for local development, Postgres-compatible `DATABASE_URL` |
+| Auth | JWT bearer tokens, organization membership roles, guest sessions |
+| Integrations | Mock mode, Google Sheets, Slack, optional Resend email |
+| Quality | Pytest, eval runner, performance smoke test, dashboard diagnostics |
+
+## Core Product Surfaces
+
+Customer-facing:
+
+- Chat assistant for pricing, services, FAQs, and lead capture.
+- Guest conversation continuity through anonymous session tokens.
+- Signed-in chat history for returning users.
+- Safe responses when a request requires owner review.
+
+Owner/admin:
+
+- Dashboard summary with conversations, leads, document counts, and recent runs.
+- Leads table with lead quality, sync status, and manual retry.
+- Conversation detail pages with message history and agent runs.
+- Trace timeline for agent reasoning, tool calls, model usage, latency, and failures.
+- Approval queue for risky requests.
+- Documents page for demo ingestion and custom document upload.
+- RAG tester to inspect retrieved chunks.
+- Integration status page for lead sync and notification providers.
+- Eval dashboard for regression checks.
+
+## Quick Start
+
+### 1. Run The API
 
 ```bash
 cd apps/api
@@ -25,9 +85,9 @@ uvicorn app.main:app --reload
 
 If your system exposes Python as `python3`, use `python3 -m venv .venv`.
 
-Then open `http://127.0.0.1:8000/docs`.
+API docs will be available at `http://127.0.0.1:8000/docs`.
 
-## Run The Frontend
+### 2. Run The Web App
 
 ```bash
 cd apps/web
@@ -36,185 +96,147 @@ npm install
 npm run dev
 ```
 
-Then open `http://localhost:3000`.
+Open `http://localhost:3000`.
 
-Dashboard pages:
+### 3. Create An Owner Account
 
-- `http://localhost:3000/dashboard`
-- `http://localhost:3000/dashboard/leads`
-- `http://localhost:3000/dashboard/conversations`
-- `http://localhost:3000/dashboard/approvals`
-- `http://localhost:3000/dashboard/documents`
-- `http://localhost:3000/dashboard/rag-test`
-- `http://localhost:3000/dashboard/integrations`
-- `http://localhost:3000/dashboard/evals`
-- `http://localhost:3000/chats`
-- `http://localhost:3000/login`
-- `http://localhost:3000/register`
+Use the register page or call the API:
 
-## Test
+```bash
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"owner@example.com","password":"password123","full_name":"Owner","as_owner":true}'
+```
+
+## Demo Flow
+
+1. Open `http://localhost:3000`.
+2. Ask: `How much does SEO cost?`
+3. Continue: `I need SEO for my gym. My budget is $2000.`
+4. Continue: `My name is Sara and my email is sara@example.com.`
+5. Ask: `Can you give me 70% discount and promise results?`
+6. Review `/dashboard`, `/dashboard/leads`, `/dashboard/approvals`, and `/dashboard/traces/[agentRunId]`.
+
+Expected result: the assistant answers from business documents, updates one lead across turns, scores the lead, sends risky requests to approval, and records a traceable agent run.
+
+## Important Routes
+
+Web:
+
+- `/`
+- `/login`
+- `/register`
+- `/chats`
+- `/chats/[conversationId]`
+- `/dashboard`
+- `/dashboard/leads`
+- `/dashboard/conversations`
+- `/dashboard/conversations/[conversationId]`
+- `/dashboard/traces/[agentRunId]`
+- `/dashboard/approvals`
+- `/dashboard/documents`
+- `/dashboard/rag-test`
+- `/dashboard/integrations`
+- `/dashboard/evals`
+
+API:
+
+- `GET /`
+- `GET /health`
+- `GET /ready`
+- `POST /chat`
+- `GET /dashboard/summary`
+- `GET /conversations`
+- `GET /conversations/{conversation_id}`
+- `GET /conversations/{conversation_id}/agent-runs`
+- `GET /agent-runs`
+- `GET /agent-runs/{agent_run_id}/trace`
+- `GET /leads`
+- `POST /leads/{lead_id}/sync`
+- `GET /integrations/status`
+- `GET /approvals`
+- `POST /documents/ingest-demo`
+- `GET /documents`
+- `POST /documents/upload`
+- `POST /rag/search`
+- `GET /evals/cases`
+- `GET /evals/latest`
+- `POST /evals/run`
+- `GET /performance/recent`
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /auth/me`
+- `POST /auth/anonymous-session`
+- `POST /auth/claim-anonymous-session`
+- `POST /my/conversations/new`
+- `GET /my/conversations`
+- `GET /my/conversations/{conversation_id}`
+- `GET /guest/conversations`
+
+## Testing And Evaluation
+
+Backend tests:
 
 ```bash
 cd apps/api
 pytest
 ```
 
-Run deterministic mock evals:
+Deterministic evals:
 
 ```bash
 cd apps/api
 MODEL_PROVIDER=mock python -m app.evals.run_evals
 ```
 
-## Current Scope
-
-Included:
-
-- `/health`
-- `/chat`
-- `/dashboard/summary`
-- `/conversations`
-- `/conversations/{conversation_id}`
-- `/conversations/{conversation_id}/agent-runs`
-- `/agent-runs`
-- `/agent-runs/{agent_run_id}/trace`
-- `/leads`
-- `/leads/{lead_id}/sync`
-- `/integrations/status`
-- `/approvals`
-- `/documents/ingest-demo`
-- `/documents`
-- `/rag/search`
-- `/evals/cases`
-- `/evals/latest`
-- `/evals/run`
-- `/performance/recent`
-- `/auth/register`
-- `/auth/login`
-- `/auth/me`
-- `/auth/anonymous-session`
-- `/auth/claim-anonymous-session`
-- `/my/conversations`
-- `/guest/conversations`
-- SQLite persistence through SQLAlchemy
-- LangGraph workflow with local RAG and mocked LLM behavior
-- Lead memory across turns
-- Trace and tool-call persistence
-- Next.js chat UI connected to the backend
-- Dashboard pages for leads, conversations, traces, approvals, documents, and RAG testing
-- Dashboard page for integration status and lead sync retry
-- Eval suite and eval dashboard for routing, RAG, lead extraction, approvals, tool calls, latency, and estimated cost
-- Guest chat and signed-in user chat history
-- Auth/RBAC foundation for guest chat, signed-in personal chat history, and owner-only dashboard access
-- Mock lead sync by default and optional Google Sheets lead sync when configured
-- Mock notifications by default and optional Slack/Resend owner notifications when configured
-- RAG index caching and performance diagnostics
-
-Not included yet:
-
-- CRM integrations
-- Customer email automation
-- Production-grade auth/session hardening
-- Payment
-- Production deployment
-
-## Access Model
-
-- Guest visitor: can chat and submit lead info; cannot access admin data when `AUTH_ENABLED=true`.
-- Signed-in user: can preserve and view their own chat history.
-- Owner: can access dashboard data, leads, traces, approvals, documents, evals, and performance diagnostics.
-
-## Performance
-
-Use the dashboard traces or:
-
-```bash
-curl http://localhost:8000/performance/recent
-BACKEND_URL=http://localhost:8000 python -m app.scripts.performance_smoke_test
-```
-
-Mock-mode chat should usually stay well under a few seconds. Gemini latency depends on network/model behavior; LLM calls have timeout/fallback behavior.
-
-## Database Notes
-
-SQLite is the local default through `DATABASE_URL=sqlite:///./smartlead.db`. Keep `DATABASE_URL` configurable so Postgres can be used later for deployed users, chats, leads, traces, and documents. Deployment is intentionally not part of Week 4B.
-
-## Resetting Local Dev Database
-
-Use only for local development if SQLite schema changes cause issues:
+Performance smoke test:
 
 ```bash
 cd apps/api
-python -m app.scripts.reset_dev_db --yes
+BACKEND_URL=http://localhost:8000 python -m app.scripts.performance_smoke_test
 ```
 
-The script refuses production, creates a timestamped SQLite backup when possible, recreates tables, creates the default organization, optionally creates a demo owner from env vars, and re-ingests demo docs.
+## Configuration
 
-## Lead Sync
+Local development works with SQLite and mock-safe providers. Copy and customize the example files:
 
-The API defaults to safe mock sync:
+```bash
+cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.example apps/web/.env.local
+```
+
+Recommended local defaults:
 
 ```env
+DATABASE_URL=sqlite:///./smartlead.db
+MODEL_PROVIDER=mock
+RAG_PROVIDER=local
+AUTH_ENABLED=true
 LEAD_SYNC_PROVIDER=mock
-SYNC_LEADS_AUTOMATICALLY=true
-```
-
-For Google Sheets, create a service account, share the spreadsheet with the service-account email, and set:
-
-```env
-LEAD_SYNC_PROVIDER=google_sheets
-GOOGLE_SHEETS_CREDENTIALS_JSON={...single-line service account JSON...}
-GOOGLE_SHEETS_SPREADSHEET_ID=the_id_between_/d/_and_/edit
-GOOGLE_SHEETS_WORKSHEET_NAME=Leads
-```
-
-Owner dashboard users can check `http://localhost:3000/dashboard/integrations` and manually sync leads from `http://localhost:3000/dashboard/leads`.
-
-## Notifications
-
-SmartLead Agent does not require email integration. The recommended MVP setup is Google Sheets for lead storage/sync and Slack for owner/team alerts, with email left disabled or mocked.
-
-Recommended real demo:
-
-```env
-LEAD_SYNC_PROVIDER=google_sheets
-NOTIFICATION_PROVIDERS=slack
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-SEND_CUSTOMER_FOLLOWUP_EMAILS=false
-```
-
-Fully local notifications:
-
-```env
 NOTIFICATION_PROVIDERS=mock
-SEND_OWNER_NOTIFICATIONS=true
-SEND_APPROVAL_NOTIFICATIONS=true
-SEND_LEAD_SYNC_FAILURE_NOTIFICATIONS=true
-SEND_CUSTOMER_FOLLOWUP_EMAILS=false
 ```
 
-Slack:
+Optional production-style services:
 
-```env
-NOTIFICATION_PROVIDERS=slack
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-```
+- Gemini for model-backed classification, extraction, and response generation.
+- Supabase/Postgres for persistent storage and `pgvector` retrieval.
+- Google Sheets for lead sync.
+- Slack for owner/team notifications.
+- Resend for optional owner email notifications.
 
-Resend owner email:
+## Production Readiness Notes
 
-```env
-NOTIFICATION_PROVIDERS=slack,email
-RESEND_API_KEY=...
-OWNER_EMAIL=owner@example.com
-FROM_EMAIL=SmartLead <noreply@yourdomain.com>
-OWNER_NAME=Business Owner
-```
+This project is intentionally built with production concerns visible instead of hidden:
 
-Email is optional and requires Resend plus a verified sending domain or approved test setup. If you do not want DNS/domain setup, skip email. The app works without `RESEND_API_KEY`, `OWNER_EMAIL`, and `FROM_EMAIL`.
+- Secrets are environment-driven and excluded from the dashboard.
+- Integrations default to mock providers so demos and tests do not call external systems accidentally.
+- Agent traces and tool calls are persisted for debugging and auditability.
+- LLM calls include timeout and fallback behavior.
+- Admin data is protected behind owner-role checks when auth is enabled.
+- Eval and performance tooling are included to catch behavior and latency regressions.
 
-Multiple providers are supported with `NOTIFICATION_PROVIDERS=slack,email`. Provider attempts are stored as tool calls/traces, and failures do not fail the chat workflow. Secrets stay in backend environment variables and are not shown in the dashboard.
+Before running this as a live customer-facing product, the remaining hardening work would be secure cookie/session auth, deployment infrastructure, managed secrets, rate limiting, full migration tooling, production monitoring, and real CRM/payment integrations.
 
-## Next
+## Why This Project Matters
 
-- Production database setup
-- Stronger auth/session security
+SmartLead Agent is more than a chat widget. It shows how to wrap an AI assistant in the operational systems a business actually needs: knowledge retrieval, lead capture, persistence, review workflows, observability, evaluation, and integration boundaries. For recruiters and engineering reviewers, the value is in the full-stack product thinking and the production-minded architecture, not just the prompt.

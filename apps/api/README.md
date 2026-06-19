@@ -1,10 +1,61 @@
 # SmartLead Agent API
 
-Backend foundation for SmartLead Agent, a production-style AI website assistant for small businesses.
+FastAPI backend for SmartLead Agent, a production-style AI sales assistant for service businesses. The API powers customer chat, agent orchestration, document retrieval, lead qualification, owner dashboards, human approvals, evaluation runs, and external integration boundaries.
 
-Week 4C keeps mock mode for deterministic local development and tests, includes optional Gemini LLM provider support, exposes dashboard-friendly read endpoints, adds an evaluation suite with latency/cost tracking, caches local RAG retrieval, adds an auth/RBAC foundation, adds provider-based lead sync with mock/Google Sheets support, and adds optional Slack/owner-email notifications. It still does not include CRM, payment, deployment, customer follow-up email automation, or production auth hardening.
+The backend is designed to be credible in a real operating environment: deterministic mock mode for tests and demos, configurable LLM providers, persistent traces and tool calls, role-aware data access, safe integration fallbacks, and a database abstraction that can run locally on SQLite or against Postgres/Supabase.
 
-The API can run on local SQLite for development or Supabase/Postgres for persistent production-style storage. RAG defaults to local TF-IDF, but can be switched to Supabase `pgvector` retrieval with Gemini embeddings.
+## Backend Capabilities
+
+- `POST /chat` endpoint backed by a LangGraph workflow.
+- Intent classification, RAG retrieval, lead extraction, lead scoring, safety review, tool execution, and final response generation.
+- Multi-turn lead memory that updates existing leads instead of duplicating them.
+- Owner-only dashboard endpoints for leads, conversations, agent runs, traces, approvals, documents, evals, integrations, and performance.
+- Guest sessions, authenticated users, anonymous-session claiming, and owner RBAC.
+- Local TF-IDF RAG by default, with optional Supabase `pgvector` retrieval and local fallback.
+- Mock LLM provider for deterministic local behavior, with optional Gemini provider for model-backed runs.
+- Google Sheets lead sync provider with safe mock default.
+- Slack notification provider, mock notification provider, and optional Resend owner email provider.
+- Persisted model metadata, estimated cost, latency, tool calls, and trace events for each agent run.
+- Regression eval runner and performance smoke test.
+
+## Architecture
+
+```text
+app/main.py                  FastAPI app factory, CORS, readiness checks
+app/api/routes.py            Chat, dashboard, RAG, eval, integration, and performance routes
+app/api/auth_routes.py       Register, login, current user, anonymous sessions
+app/workflow/graph.py        LangGraph workflow definition
+app/workflow/nodes.py        Agent nodes for routing, RAG, leads, safety, actions, response
+app/services/                Auth, RAG, LLM, lead, trace, document, integration services
+app/models.py                SQLAlchemy persistence models
+app/evals/                   Eval cases and runner
+app/scripts/                 Ingestion, reset, and performance scripts
+tests/                       API, workflow, RAG, auth, metrics, and integration tests
+```
+
+## Agent Flow
+
+```text
+User message
+  -> intent_router
+  -> optional rag
+  -> lead_qualification
+  -> lead_scoring
+  -> safety
+  -> action
+  -> final_response
+```
+
+Each run can persist:
+
+- Conversation messages
+- Lead record and lead score
+- Retrieved document chunks
+- Human approval requests
+- Tool calls
+- Trace events
+- Provider/model metadata
+- Latency and estimated cost
 
 ## Install
 
@@ -15,15 +66,43 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-If your shell uses `python3` instead of `python`, use `python3 -m venv .venv`.
+If your shell uses `python3`, create the environment with `python3 -m venv .venv`.
 
-## Ingest Demo Docs
+## Environment
+
+Create `apps/api/.env` from the example file:
+
+```bash
+cp .env.example .env
+```
+
+Recommended local demo values:
+
+```env
+DATABASE_URL=sqlite:///./smartlead.db
+FRONTEND_URL=http://localhost:3000
+ENVIRONMENT=development
+CORS_ORIGINS=http://localhost:3000
+
+MODEL_PROVIDER=mock
+RAG_PROVIDER=local
+AUTH_ENABLED=true
+JWT_SECRET_KEY=dev-secret-change-me
+
+LEAD_SYNC_PROVIDER=mock
+NOTIFICATION_PROVIDERS=mock
+SYNC_LEADS_AUTOMATICALLY=true
+```
+
+The checked-in `.env.example` also includes optional Gemini, Supabase, Google Sheets, Slack, and Resend settings.
+
+## Ingest Demo Documents
 
 ```bash
 python -m app.scripts.ingest_demo_docs
 ```
 
-You can also ingest through the API after starting the server:
+Or ingest through the API after the server starts:
 
 ```bash
 curl -X POST http://localhost:8000/documents/ingest-demo
@@ -35,31 +114,16 @@ curl -X POST http://localhost:8000/documents/ingest-demo
 uvicorn app.main:app --reload
 ```
 
-The API runs at `http://127.0.0.1:8000`.
+Local endpoints:
 
-OpenAPI docs are available at `http://127.0.0.1:8000/docs`.
+- API: `http://127.0.0.1:8000`
+- OpenAPI docs: `http://127.0.0.1:8000/docs`
+- Health: `http://127.0.0.1:8000/health`
+- Readiness: `http://127.0.0.1:8000/ready`
 
-## Test
+## Auth And RBAC
 
-```bash
-pytest
-```
-
-Tests use mock mode by default and do not require `GEMINI_API_KEY`.
-
-The integration tests also default to mock lead sync and mock notifications. They do not call Google Sheets, Slack, or Resend unless you run the optional real-provider tests with separate test env vars.
-
-## Auth Setup
-
-Auth should be enabled when testing the guest/user/owner flow:
-
-```env
-AUTH_ENABLED=true
-JWT_SECRET_KEY=dev-secret-change-me
-DEFAULT_ORGANIZATION_NAME=BrightPath Marketing Agency
-```
-
-When `AUTH_ENABLED=true`, dashboard/admin endpoints require the `owner` role. Register a demo owner:
+When `AUTH_ENABLED=true`, owner/admin data requires an owner membership. Register a demo owner:
 
 ```bash
 curl -X POST http://localhost:8000/auth/register \
@@ -67,206 +131,31 @@ curl -X POST http://localhost:8000/auth/register \
   -d '{"email":"owner@example.com","password":"password123","full_name":"Owner","as_owner":true}'
 ```
 
-## Run Evals
+Access model:
 
-Mock-mode evals are deterministic and do not require API keys:
+- Guest visitor: can chat through an anonymous session and submit lead details.
+- Signed-in user: can preserve and view personal chat history.
+- Owner: can access dashboard data, leads, traces, approvals, documents, evals, performance diagnostics, and integration controls.
 
-```bash
-MODEL_PROVIDER=mock python -m app.evals.run_evals
-```
+## API Surface
 
-This prints summary metrics and writes:
+Public and chat:
 
-```text
-eval_results/latest_eval_results.json
-```
-
-Gemini evals use the current configured provider and may vary between runs. They can consume API quota:
-
-```bash
-set -a
-source .env
-set +a
-python -m app.evals.run_evals
-```
-
-## LLM Provider Modes
-
-Mock mode is the default and uses deterministic local rules:
-
-```bash
-export MODEL_PROVIDER=mock
-```
-
-Gemini mode uses the `google-genai` SDK for structured intent classification, lead extraction, and final response generation:
-
-```bash
-export MODEL_PROVIDER=gemini
-export GEMINI_API_KEY=your_key
-export GEMINI_MODEL=gemini-3.5-flash
-export LLM_TIMEOUT_SECONDS=30
-export LLM_MAX_RETRIES=1
-export ESTIMATED_INPUT_COST_PER_1M_TOKENS=0
-export ESTIMATED_OUTPUT_COST_PER_1M_TOKENS=0
-```
-
-If `gemini-3.5-flash` is unavailable for your account, set `GEMINI_MODEL` to another Gemini Flash model. If Gemini fails during `/chat`, the workflow falls back to mock behavior and records the fallback in trace output.
-
-## Supabase Storage And Vector RAG
-
-For local development, SQLite still works:
-
-```env
-DATABASE_URL=sqlite:///./smartlead.db
-RAG_PROVIDER=local
-```
-
-For Supabase, create a Supabase project and copy the Postgres connection string from Project Settings -> Database. Use the URI form with the `psycopg` driver:
-
-```env
-DATABASE_URL=postgresql+psycopg://postgres.YOUR_PROJECT_REF:YOUR_PASSWORD@aws-0-YOUR_REGION.pooler.supabase.com:6543/postgres?sslmode=require
-```
-
-Then enable `pgvector` once in the Supabase SQL editor:
-
-```sql
-create extension if not exists vector;
-```
-
-Switch RAG to Supabase vector search:
-
-```env
-RAG_PROVIDER=supabase
-RAG_VECTOR_DIMENSION=768
-RAG_FALLBACK_TO_LOCAL=true
-EMBEDDING_PROVIDER=gemini
-GEMINI_API_KEY=your_gemini_key
-GEMINI_EMBEDDING_MODEL=text-embedding-004
-```
-
-When `RAG_PROVIDER=supabase`, startup creates the normal SQLAlchemy tables in Supabase and adds a `document_chunks.embedding vector(768)` column if permissions allow it. If the automatic vector column setup fails, run this in the Supabase SQL editor:
-
-```sql
-alter table document_chunks
-add column if not exists embedding vector(768);
-
-create index if not exists ix_document_chunks_embedding
-on document_chunks using ivfflat (embedding vector_cosine_ops);
-```
-
-Document ingestion stores:
-
-- full files in `documents`
-- chunks in `document_chunks`
-- embedding metadata in normal text/integer columns
-- pgvector embeddings in `document_chunks.embedding`
-
-At query time, the API embeds the user question, searches Supabase with cosine distance, reranks the best candidates with business-keyword boosts, and sends the selected chunks into the final response agent. If embeddings or Supabase vector search are unavailable and `RAG_FALLBACK_TO_LOCAL=true`, the API falls back to local retrieval instead of breaking `/chat`.
-
-## Lead Sync Providers
-
-Lead sync is provider based. The default is safe local mock mode:
-
-```env
-LEAD_SYNC_PROVIDER=mock
-SYNC_LEADS_AUTOMATICALLY=true
-SYNC_ONLY_COMPLETE_LEADS=false
-```
-
-To sync leads to Google Sheets, keep your service-account JSON out of git, share the target sheet with the service-account email, and place the JSON as a single-line env value:
-
-```env
-LEAD_SYNC_PROVIDER=google_sheets
-GOOGLE_SHEETS_CREDENTIALS_JSON={"type":"service_account","project_id":"..."}
-GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id
-GOOGLE_SHEETS_WORKSHEET_NAME=Leads
-```
-
-The spreadsheet ID is the long value in the sheet URL between `/d/` and `/edit`.
-
-Google Sheets sync appends a row the first time and updates the saved row range on later sync attempts when possible. If Google Sheets is missing or unavailable, `/chat` still returns normally; the lead keeps a local `external_sync_status` such as `not_configured` or `failed`.
-
-## Notification Providers
-
-SmartLead Agent does not require email integration. The recommended MVP/demo setup is Google Sheets for lead storage/sync and Slack for owner/team alerts. Email can stay disabled or mocked.
-
-Recommended real demo notifications:
-
-```env
-LEAD_SYNC_PROVIDER=google_sheets
-NOTIFICATION_PROVIDERS=slack
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-SEND_CUSTOMER_FOLLOWUP_EMAILS=false
-```
-
-Fully local notifications:
-
-```env
-NOTIFICATION_PROVIDERS=mock
-NOTIFICATION_PROVIDER=mock
-SEND_OWNER_NOTIFICATIONS=true
-SEND_APPROVAL_NOTIFICATIONS=true
-SEND_LEAD_SYNC_FAILURE_NOTIFICATIONS=true
-SEND_CUSTOMER_FOLLOWUP_EMAILS=false
-```
-
-`NOTIFICATION_PROVIDERS` supports:
-
-- `mock`
-- `slack`
-- `email`
-- `slack,email`
-
-`NOTIFICATION_PROVIDER` remains only for backward compatibility. If both are present, `NOTIFICATION_PROVIDERS` wins.
-
-Notification attempts are stored as tool calls and trace events. Missing provider config or send failures do not fail `/chat`.
-
-### Slack Notifications
-
-Create a Slack incoming webhook, then set:
-
-```env
-NOTIFICATION_PROVIDERS=slack
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-```
-
-To combine Slack and email:
-
-```env
-NOTIFICATION_PROVIDERS=slack,email
-```
-
-Slack notifications are sent for warm/hot leads, approval requests, and lead sync failures when enabled. Never commit the webhook URL.
-
-### Email Is Optional
-
-SmartLead Agent works without `RESEND_API_KEY`, `OWNER_EMAIL`, and `FROM_EMAIL`. If you do not want DNS/domain setup, skip email and use Slack or mock notifications.
-
-Real owner email requires Resend and a verified sending domain or approved test setup. Only configure email when you want that.
-
-Optional email env:
-
-
-```env
-NOTIFICATION_PROVIDERS=slack,email
-RESEND_API_KEY=...
-OWNER_EMAIL=owner@example.com
-FROM_EMAIL=SmartLead <noreply@yourdomain.com>
-OWNER_NAME=Business Owner
-```
-
-Email notifications go to the business owner/team email only. Customer follow-up emails are disabled by default:
-
-```env
-SEND_CUSTOMER_FOLLOWUP_EMAILS=false
-```
-
-Do not enable customer email sending without explicit business approval and configuration.
-
-## Endpoints
-
+- `GET /`
 - `GET /health`
+- `GET /ready`
 - `POST /chat`
+
+Auth:
+
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /auth/me`
+- `POST /auth/anonymous-session`
+- `POST /auth/claim-anonymous-session`
+
+Owner/dashboard:
+
 - `GET /dashboard/summary`
 - `GET /conversations`
 - `GET /conversations/{conversation_id}`
@@ -277,208 +166,208 @@ Do not enable customer email sending without explicit business approval and conf
 - `POST /leads/{lead_id}/sync`
 - `GET /integrations/status`
 - `GET /approvals`
-- `POST /documents/ingest-demo`
 - `GET /documents`
+- `POST /documents/ingest-demo`
+- `POST /documents/upload`
 - `POST /rag/search`
 - `GET /evals/cases`
 - `GET /evals/latest`
 - `POST /evals/run`
 - `GET /performance/recent`
-- `POST /auth/register`
-- `POST /auth/login`
-- `GET /auth/me`
-- `POST /auth/anonymous-session`
-- `POST /auth/claim-anonymous-session`
+
+User conversation history:
+
+- `POST /my/conversations/new`
 - `GET /my/conversations`
 - `GET /my/conversations/{conversation_id}`
-- `POST /my/conversations/new`
 - `GET /guest/conversations`
 
-## Example Requests
+## LLM Provider Modes
 
-Health:
+Mock mode is deterministic and best for tests, local demos, and CI:
 
-```bash
-curl http://localhost:8000/health
+```env
+MODEL_PROVIDER=mock
 ```
 
-Search RAG:
+Gemini mode enables model-backed classification, extraction, and response generation:
 
-```bash
-curl -X POST http://localhost:8000/rag/search \
-  -H "Content-Type: application/json" \
-  -d '{"query":"How much does SEO cost?","top_k":4}'
+```env
+MODEL_PROVIDER=gemini
+GEMINI_API_KEY=your_key
+GEMINI_MODEL=gemini-3.5-flash
+LLM_TIMEOUT_SECONDS=30
+LLM_MAX_RETRIES=1
 ```
 
-Lead inquiry:
+If Gemini fails during `/chat`, the workflow falls back to safe mock behavior and records the fallback in the trace.
 
-```bash
-curl -X POST http://localhost:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"I need SEO for my gym. My budget is $2000 and I want to start next month."}'
+## RAG Options
+
+Local mode uses the ingested documents and a local retrieval index:
+
+```env
+DATABASE_URL=sqlite:///./smartlead.db
+RAG_PROVIDER=local
 ```
 
-Continue the same conversation:
+Supabase/Postgres mode uses SQLAlchemy storage plus optional `pgvector` retrieval:
 
-```bash
-curl -X POST http://localhost:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"conversation_id":"YOUR_CONVERSATION_ID","message":"My name is Sara and my email is sara@example.com"}'
+```env
+DATABASE_URL=postgresql+psycopg://postgres.YOUR_PROJECT_REF:YOUR_PASSWORD@aws-0-YOUR_REGION.pooler.supabase.com:6543/postgres?sslmode=require
+RAG_PROVIDER=supabase
+RAG_VECTOR_DIMENSION=768
+RAG_FALLBACK_TO_LOCAL=true
+EMBEDDING_PROVIDER=gemini
+GEMINI_API_KEY=your_gemini_key
+GEMINI_EMBEDDING_MODEL=text-embedding-004
 ```
 
-Pricing question:
+Enable `pgvector` once in Supabase:
 
-```bash
-curl -X POST http://localhost:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"How much does SEO cost?"}'
+```sql
+create extension if not exists vector;
 ```
 
-Discount request:
+If automatic vector setup is not permitted, run:
 
-```bash
-curl -X POST http://localhost:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"Can you give me 70% discount and promise results?"}'
+```sql
+alter table document_chunks
+add column if not exists embedding vector(768);
+
+create index if not exists ix_document_chunks_embedding
+on document_chunks using ivfflat (embedding vector_cosine_ops);
 ```
 
-Conversation:
+When vector search is unavailable and `RAG_FALLBACK_TO_LOCAL=true`, `/chat` keeps working with local retrieval.
 
-```bash
-curl http://localhost:8000/conversations/{conversation_id}
+## Lead Sync
+
+Mock mode is the safe default:
+
+```env
+LEAD_SYNC_PROVIDER=mock
+SYNC_LEADS_AUTOMATICALLY=true
+SYNC_ONLY_COMPLETE_LEADS=false
 ```
 
-Recent conversations:
+Google Sheets sync:
 
-```bash
-curl http://localhost:8000/conversations
+```env
+LEAD_SYNC_PROVIDER=google_sheets
+GOOGLE_SHEETS_CREDENTIALS_JSON={"type":"service_account","project_id":"..."}
+GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id
+GOOGLE_SHEETS_WORKSHEET_NAME=Leads
 ```
 
-Dashboard summary:
+Share the sheet with the service-account email. The provider appends a row on first sync and updates the saved row range on later sync attempts when possible. If Google Sheets is missing or unavailable, chat still succeeds and the lead records an external sync status such as `not_configured` or `failed`.
 
-```bash
-curl http://localhost:8000/dashboard/summary
+## Notifications
+
+Local notification mode:
+
+```env
+NOTIFICATION_PROVIDERS=mock
+SEND_OWNER_NOTIFICATIONS=true
+SEND_APPROVAL_NOTIFICATIONS=true
+SEND_LEAD_SYNC_FAILURE_NOTIFICATIONS=true
+SEND_CUSTOMER_FOLLOWUP_EMAILS=false
 ```
 
-Trace and tool calls:
+Slack owner/team notifications:
 
-```bash
-curl http://localhost:8000/agent-runs/{agent_run_id}/trace
+```env
+NOTIFICATION_PROVIDERS=slack
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 ```
 
-Leads:
+Optional owner email through Resend:
 
-```bash
-curl http://localhost:8000/leads
+```env
+NOTIFICATION_PROVIDERS=slack,email
+RESEND_API_KEY=...
+OWNER_EMAIL=owner@example.com
+FROM_EMAIL=SmartLead <noreply@yourdomain.com>
+OWNER_NAME=Business Owner
 ```
 
-Manual lead sync:
+Email is optional and requires a verified sending domain or approved test sender. Customer follow-up emails are disabled by default.
+
+## Testing
+
+Run the backend test suite:
 
 ```bash
-curl -X POST http://localhost:8000/leads/{lead_id}/sync
+pytest
 ```
 
-Integration status:
+Tests are built around mock-safe defaults and do not require Gemini, Google Sheets, Slack, or Resend credentials.
+
+Run deterministic evals:
 
 ```bash
-curl http://localhost:8000/integrations/status
+MODEL_PROVIDER=mock python -m app.evals.run_evals
 ```
 
-Approvals:
+Run evals with the configured provider:
 
 ```bash
-curl http://localhost:8000/approvals
+set -a
+source .env
+set +a
+python -m app.evals.run_evals
 ```
 
-Eval cases:
+The runner writes:
 
-```bash
-curl http://localhost:8000/evals/cases
+```text
+eval_results/latest_eval_results.json
 ```
 
-Latest eval results:
+## Performance Diagnostics
 
-```bash
-curl http://localhost:8000/evals/latest
-```
-
-Run evals in development:
-
-```bash
-curl -X POST http://localhost:8000/evals/run
-```
-
-Performance diagnostics:
+Use the API:
 
 ```bash
 curl http://localhost:8000/performance/recent
+```
+
+Or run a smoke test against a running backend:
+
+```bash
 BACKEND_URL=http://localhost:8000 python -m app.scripts.performance_smoke_test
 ```
 
-## How Local RAG Works
+Mock-mode chat should stay comfortably fast. Gemini latency depends on network and model behavior, so the API records latency, model calls, and fallback information for inspection.
 
-Markdown files from `data/demo_business` are loaded into `Document` records, split into `DocumentChunk` records, and searched locally. The preferred path uses `sklearn` TF-IDF and cosine similarity. A pure-Python TF-IDF-style fallback is included so the app still runs without external API keys.
+## Local Database Reset
 
-If `/chat` needs RAG and no chunks exist yet, demo docs are auto-ingested.
-
-## Conversation Memory
-
-Each `/chat` call saves the user message, runs the graph, saves the assistant response, and persists trace events. Existing lead data for the conversation is loaded into `AgentState`, so a second turn can update the same lead instead of creating a duplicate.
-
-## Metrics And Evals
-
-Agent runs store total latency, model call count, estimated cost, model provider, and model name. Trace events and tool calls store per-step latency.
-
-The eval suite tracks:
-
-- Intent accuracy
-- RAG usage/source accuracy
-- Lead extraction accuracy
-- Human approval accuracy
-- Tool-call accuracy
-- Valid output success
-- Average latency
-- Estimated cost
-
-`POST /evals/run` is allowed only when `ENVIRONMENT=development`.
-
-## Resetting The Local Dev Database
-
-Use this only for local development if schema changes from Week 4B cause SQLite issues:
+For local development only:
 
 ```bash
-cd apps/api
 python -m app.scripts.reset_dev_db --yes
 ```
 
-The script:
+The script refuses production-style resets unless explicitly enabled, creates a timestamped SQLite backup when possible, recreates tables, creates the default organization, optionally creates a demo owner from env vars, and re-ingests demo documents.
 
-- Refuses to run in production
-- Requires `--yes`
-- Backs up the SQLite database before deleting data
-- Drops and recreates tables
-- Creates the default organization
-- Optionally creates a demo owner if `DEMO_OWNER_EMAIL` and `DEMO_OWNER_PASSWORD` are set
-- Re-ingests demo documents
+## Production Readiness Notes
 
-Do not use this against production or client data.
+Implemented production-minded safeguards:
 
-## Configuration
+- Environment-driven configuration
+- Auth/RBAC checks on admin data
+- Mock-first external providers
+- LLM timeout and fallback behavior
+- Persistent traces and tool calls
+- Evals and performance diagnostics
+- Postgres-compatible database configuration
+- Optional vector retrieval with local fallback
 
-The app uses SQLite by default:
+Recommended before live production:
 
-```text
-sqlite:///./smartlead_agent.db
-```
-
-Set `DATABASE_URL` to point at another SQLAlchemy-supported database later, such as Postgres or Supabase.
-
-SQLite is not recommended for deployed user/chat/lead/trace data. Deployment will be handled later; this phase only keeps `DATABASE_URL` configurable.
-
-## Still Mocked
-
-- Follow-up draft sending
-- Customer follow-up email sending
-- CRM integrations
-
-The RAG retrieval is real and local. Lead sync can be real with Google Sheets when configured. Owner notifications can be real with Slack or Resend when configured. Intent classification, lead extraction, and response generation are mocked in `MODEL_PROVIDER=mock` and Gemini-backed in `MODEL_PROVIDER=gemini`.
+- Secure cookie or managed auth provider
+- Rate limiting and abuse protection
+- Migration tooling such as Alembic
+- Managed secrets and deployment infrastructure
+- Centralized logging, alerting, and metrics
+- Real CRM integration and customer email automation if required
