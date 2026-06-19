@@ -37,6 +37,7 @@ from app.services.document_service import (
     ingest_documents,
     list_documents_with_chunk_counts,
 )
+from app.services.embedding_service import active_embedding_model_name
 from app.services.integrations.lead_sync_provider import get_lead_sync_provider
 from app.services.integrations.notification_provider import get_notification_providers
 from app.services.lead_service import get_latest_lead_for_conversation, lead_to_dict, list_leads, sync_lead_external
@@ -64,6 +65,9 @@ async def health(db: Session = Depends(get_db)) -> dict:
         "auth_enabled": settings.auth_enabled,
         "database_connected": database_connected,
         "database_kind": _database_kind(settings.database_url),
+        "rag_provider": settings.rag_provider,
+        "embedding_provider": settings.embedding_provider,
+        "embedding_model": active_embedding_model_name(),
     }
 
 
@@ -339,6 +343,13 @@ async def get_integrations_status(request: Request, db: Session = Depends(get_db
             "send_approval_notifications": settings.send_approval_notifications,
             "send_lead_sync_failure_notifications": settings.send_lead_sync_failure_notifications,
             "send_customer_followup_emails": settings.send_customer_followup_emails,
+        },
+        "rag": {
+            "provider": settings.rag_provider,
+            "vector_dimension": settings.rag_vector_dimension,
+            "fallback_to_local": settings.rag_fallback_to_local,
+            "embedding_provider": settings.embedding_provider,
+            "embedding_model": active_embedding_model_name(),
         },
     }
 

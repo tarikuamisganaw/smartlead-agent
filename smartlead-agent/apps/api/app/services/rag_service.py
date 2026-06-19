@@ -3,12 +3,19 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import DocumentChunk
 from app.services.document_service import default_demo_data_dir, ingest_documents
+from app.services.embedding_service import (
+    EmbeddingProviderError,
+    embed_missing_document_chunks,
+    embed_query,
+    vector_literal,
+    vector_rag_enabled,
+)
 
 try:  # pragma: no cover - exercised only when sklearn is installed.
     from sklearn.feature_extraction.text import TfidfVectorizer
@@ -115,12 +122,82 @@ def build_index_from_db(db: Session) -> LocalRagIndex:
 
 
 def search_docs(db: Session, query: str, top_k: int = 4) -> list[dict]:
+    _ensure_chunks_exist(db)
+    settings = get_settings()
+
+    if vector_rag_enabled(db):
+        try:
+            results = _search_docs_pgvector(db, query, top_k=top_k)
+            if results or not settings.rag_fallback_to_local:
+                return results
+        except Exception:
+            db.rollback()
+            if not settings.rag_fallback_to_local:
+                raise
+
+    return _search_docs_local(db, query, top_k=top_k)
+
+
+def _search_docs_local(db: Session, query: str, top_k: int = 4) -> list[dict]:
     index = _get_index(db)
-    if not index.chunks:
-        ingest_documents(db, default_demo_data_dir(), clear_existing=True)
-        invalidate_rag_index()
-        index = _get_index(db)
     return index.search(query, top_k=top_k)
+
+
+def _search_docs_pgvector(db: Session, query: str, top_k: int = 4) -> list[dict]:
+    if db.bind is None or db.bind.dialect.name != "postgresql":
+        raise RuntimeError("pgvector RAG requires a Postgres/Supabase database connection.")
+
+    try:
+        embed_missing_document_chunks(db)
+        query_embedding = embed_query(query).vectors[0]
+    except EmbeddingProviderError:
+        raise
+
+    candidate_limit = max(top_k * 4, 12)
+    statement = text(
+        """
+        SELECT
+            id AS chunk_id,
+            document_id,
+            title,
+            source,
+            chunk_index,
+            content,
+            GREATEST(0, 1 - (embedding <=> CAST(:query_embedding AS vector))) AS score
+        FROM document_chunks
+        WHERE embedding IS NOT NULL
+        ORDER BY embedding <=> CAST(:query_embedding AS vector)
+        LIMIT :candidate_limit
+        """
+    )
+    rows = db.execute(
+        statement,
+        {
+            "query_embedding": vector_literal(query_embedding),
+            "candidate_limit": candidate_limit,
+        },
+    ).mappings().all()
+
+    candidates = [
+        (
+            float(row["score"] or 0),
+            RagChunk(
+                id=row["chunk_id"],
+                document_id=row["document_id"],
+                source=row["source"],
+                title=row["title"],
+                chunk_index=row["chunk_index"],
+                content=row["content"],
+            ),
+        )
+        for row in rows
+    ]
+    ranked = sorted(
+        ((score + _keyword_boost(query, chunk), score, chunk) for score, chunk in candidates),
+        key=lambda item: item[0],
+        reverse=True,
+    )
+    return [_chunk_to_result(chunk, combined_score) for combined_score, _, chunk in ranked[:top_k]]
 
 
 def invalidate_rag_index() -> None:
@@ -137,6 +214,14 @@ def _get_index(db: Session) -> LocalRagIndex:
     if _CACHED_INDEX is None:
         _CACHED_INDEX = build_index_from_db(db)
     return _CACHED_INDEX
+
+
+def _ensure_chunks_exist(db: Session) -> None:
+    has_chunks = db.scalar(select(DocumentChunk.id).limit(1))
+    if has_chunks:
+        return
+    ingest_documents(db, default_demo_data_dir(), clear_existing=True)
+    invalidate_rag_index()
 
 
 def _snapshot_chunk(chunk: DocumentChunk) -> RagChunk:

@@ -5,6 +5,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models import Document, DocumentChunk
+from app.services.embedding_service import EmbeddingProviderError, embed_missing_document_chunks, vector_rag_enabled
 
 
 ALLOWED_UPLOAD_EXTENSIONS = {".md", ".txt"}
@@ -103,7 +104,12 @@ def ingest_documents(db: Session, data_dir: str, clear_existing: bool = True) ->
                 chunks_created += 1
 
         db.commit()
-        return {"documents_ingested": len(documents), "chunks_created": chunks_created}
+        embedding_result = _embed_new_chunks_if_enabled(db)
+        return {
+            "documents_ingested": len(documents),
+            "chunks_created": chunks_created,
+            **embedding_result,
+        }
     except Exception:
         db.rollback()
         raise
@@ -156,12 +162,14 @@ def create_document_from_content(
             )
 
         db.commit()
+        embedding_result = _embed_new_chunks_if_enabled(db)
         db.refresh(document)
         return {
             "document_id": document.id,
             "title": document.title,
             "source": document.source,
             "chunks_created": len(chunks),
+            **embedding_result,
         }
     except Exception:
         db.rollback()
@@ -186,3 +194,18 @@ def list_documents_with_chunk_counts(db: Session) -> list[dict]:
         }
         for document, chunk_count in rows
     ]
+
+
+def _embed_new_chunks_if_enabled(db: Session) -> dict:
+    if not vector_rag_enabled(db):
+        return {"embedding_status": "not_enabled"}
+
+    try:
+        result = embed_missing_document_chunks(db)
+        return {"embedding_status": "embedded", **result}
+    except EmbeddingProviderError as exc:
+        db.rollback()
+        return {"embedding_status": "failed", "embedding_error": str(exc)}
+    except Exception as exc:
+        db.rollback()
+        return {"embedding_status": "failed", "embedding_error": str(exc)}

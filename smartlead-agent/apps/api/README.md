@@ -4,6 +4,8 @@ Backend foundation for SmartLead Agent, a production-style AI website assistant 
 
 Week 4C keeps mock mode for deterministic local development and tests, includes optional Gemini LLM provider support, exposes dashboard-friendly read endpoints, adds an evaluation suite with latency/cost tracking, caches local RAG retrieval, adds an auth/RBAC foundation, adds provider-based lead sync with mock/Google Sheets support, and adds optional Slack/owner-email notifications. It still does not include CRM, payment, deployment, customer follow-up email automation, or production auth hardening.
 
+The API can run on local SQLite for development or Supabase/Postgres for persistent production-style storage. RAG defaults to local TF-IDF, but can be switched to Supabase `pgvector` retrieval with Gemini embeddings.
+
 ## Install
 
 ```bash
@@ -109,6 +111,57 @@ export ESTIMATED_OUTPUT_COST_PER_1M_TOKENS=0
 ```
 
 If `gemini-3.5-flash` is unavailable for your account, set `GEMINI_MODEL` to another Gemini Flash model. If Gemini fails during `/chat`, the workflow falls back to mock behavior and records the fallback in trace output.
+
+## Supabase Storage And Vector RAG
+
+For local development, SQLite still works:
+
+```env
+DATABASE_URL=sqlite:///./smartlead.db
+RAG_PROVIDER=local
+```
+
+For Supabase, create a Supabase project and copy the Postgres connection string from Project Settings -> Database. Use the URI form with the `psycopg` driver:
+
+```env
+DATABASE_URL=postgresql+psycopg://postgres.YOUR_PROJECT_REF:YOUR_PASSWORD@aws-0-YOUR_REGION.pooler.supabase.com:6543/postgres?sslmode=require
+```
+
+Then enable `pgvector` once in the Supabase SQL editor:
+
+```sql
+create extension if not exists vector;
+```
+
+Switch RAG to Supabase vector search:
+
+```env
+RAG_PROVIDER=supabase
+RAG_VECTOR_DIMENSION=768
+RAG_FALLBACK_TO_LOCAL=true
+EMBEDDING_PROVIDER=gemini
+GEMINI_API_KEY=your_gemini_key
+GEMINI_EMBEDDING_MODEL=text-embedding-004
+```
+
+When `RAG_PROVIDER=supabase`, startup creates the normal SQLAlchemy tables in Supabase and adds a `document_chunks.embedding vector(768)` column if permissions allow it. If the automatic vector column setup fails, run this in the Supabase SQL editor:
+
+```sql
+alter table document_chunks
+add column if not exists embedding vector(768);
+
+create index if not exists ix_document_chunks_embedding
+on document_chunks using ivfflat (embedding vector_cosine_ops);
+```
+
+Document ingestion stores:
+
+- full files in `documents`
+- chunks in `document_chunks`
+- embedding metadata in normal text/integer columns
+- pgvector embeddings in `document_chunks.embedding`
+
+At query time, the API embeds the user question, searches Supabase with cosine distance, reranks the best candidates with business-keyword boosts, and sends the selected chunks into the final response agent. If embeddings or Supabase vector search are unavailable and `RAG_FALLBACK_TO_LOCAL=true`, the API falls back to local retrieval instead of breaking `/chat`.
 
 ## Lead Sync Providers
 

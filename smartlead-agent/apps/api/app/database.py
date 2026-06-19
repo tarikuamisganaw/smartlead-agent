@@ -11,9 +11,18 @@ class Base(DeclarativeBase):
 
 
 settings = get_settings()
+database_url = settings.database_url
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql+psycopg://", 1)
+elif database_url.startswith("postgresql://"):
+    database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
 connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
 
-engine = create_engine(settings.database_url, connect_args=connect_args)
+engine = create_engine(
+                        settings.database_url, 
+                        connect_args={"prepare_threshold": None}
+                                                    )
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
@@ -23,8 +32,10 @@ def init_db() -> None:
             "WARNING: SQLite is not recommended for deployed user data. "
             "Use Postgres for persistent users, chats, leads, and traces."
         )
+    _ensure_pgvector_extension()
     Base.metadata.create_all(bind=engine)
     _ensure_sqlite_compat_columns()
+    _ensure_postgres_vector_columns()
 
 
 def _ensure_sqlite_compat_columns() -> None:
@@ -71,6 +82,9 @@ def _ensure_sqlite_compat_columns() -> None:
         },
         "document_chunks": {
             "organization_id": "VARCHAR",
+            "embedding_json": "TEXT",
+            "embedding_model": "VARCHAR",
+            "embedding_dimension": "INTEGER",
         },
     }
     for table_name, columns in desired_columns.items():
@@ -87,6 +101,69 @@ def _ensure_sqlite_compat_columns() -> None:
     with engine.begin() as connection:
         for statement in statements:
             connection.execute(text(statement))
+
+
+def _is_postgres() -> bool:
+    return engine.dialect.name == "postgresql"
+
+
+def _vector_rag_requested() -> bool:
+    return settings.rag_provider.lower().strip() in {"supabase", "pgvector", "vector"}
+
+
+def _ensure_pgvector_extension() -> None:
+    if not _is_postgres() or not _vector_rag_requested():
+        return
+
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    except Exception as exc:  # pragma: no cover - requires Postgres/pgvector.
+        print(f"WARNING: Could not enable pgvector extension automatically: {exc}")
+
+
+def _ensure_postgres_vector_columns() -> None:
+    if not _is_postgres():
+        return
+
+    compatibility_statements = [
+        "ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS embedding_json TEXT",
+        "ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS embedding_model VARCHAR",
+        "ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS embedding_dimension INTEGER",
+    ]
+
+    try:
+        with engine.begin() as connection:
+            for statement in compatibility_statements:
+                connection.execute(text(statement))
+    except Exception as exc:  # pragma: no cover - requires Postgres.
+        print(f"WARNING: Could not apply Postgres compatibility columns automatically: {exc}")
+
+    if not _vector_rag_requested():
+        return
+
+    dimension = int(settings.rag_vector_dimension)
+    vector_statements = [
+        f"ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS embedding vector({dimension})"
+    ]
+    index_statements = [
+        "CREATE INDEX IF NOT EXISTS ix_document_chunks_embedding "
+        "ON document_chunks USING ivfflat (embedding vector_cosine_ops)"
+    ]
+
+    try:
+        with engine.begin() as connection:
+            for statement in vector_statements:
+                connection.execute(text(statement))
+    except Exception as exc:  # pragma: no cover - requires Postgres/pgvector.
+        print(f"WARNING: Could not apply pgvector column automatically: {exc}")
+
+    try:
+        with engine.begin() as connection:
+            for statement in index_statements:
+                connection.execute(text(statement))
+    except Exception as exc:  # pragma: no cover - requires Postgres/pgvector.
+        print(f"WARNING: Could not create pgvector index automatically: {exc}")
 
 
 async def get_db() -> AsyncGenerator[Session, None]:

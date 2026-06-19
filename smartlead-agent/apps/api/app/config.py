@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     llm_max_retries: int = 1
     agent_fast_mode: bool = True
     rag_cache_enabled: bool = True
+    rag_provider: str = "local"
+    rag_vector_dimension: int = 768
+    rag_fallback_to_local: bool = True
+    embedding_provider: str = "gemini"
+    gemini_embedding_model: str = "text-embedding-004"
+    local_embedding_model: str = "local-hash-embedding-v1"
     max_llm_calls_per_chat: int = 2
     estimated_input_cost_per_1m_tokens: float = 0
     estimated_output_cost_per_1m_tokens: float = 0
@@ -54,6 +60,7 @@ class Settings(BaseSettings):
     @field_validator(
         "agent_fast_mode",
         "rag_cache_enabled",
+        "rag_fallback_to_local",
         "auth_enabled",
         "allow_dev_admin_bypass",
         "reset_db_allowed",
