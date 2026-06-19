@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import ErrorState from "@/components/ErrorState";
-import { registerUser, setAccessToken } from "@/lib/api";
+import { refreshMe, registerUser, setAccessToken } from "@/lib/api";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -19,6 +19,7 @@ export default function RegisterPage() {
     try {
       const response = await registerUser({ email, password, full_name: fullName, as_owner: asOwner });
       setAccessToken(response.access_token);
+      await refreshMe();
       window.location.href = asOwner ? "/dashboard" : "/chats";
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Registration failed.");

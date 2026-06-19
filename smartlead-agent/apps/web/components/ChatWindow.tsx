@@ -122,7 +122,16 @@ export default function ChatWindow({ initialConversationId, initialMessages = []
         },
       ]);
       if (isSignedIn) {
-        await loadConversationHistory();
+        const now = new Date().toISOString();
+        setConversations((current) => upsertConversation(current, {
+          id: response.conversation_id,
+          created_at: now,
+          updated_at: now,
+          status: "active",
+          last_message: trimmed,
+          latest_agent_run_id: response.agent_run_id,
+        }));
+        void loadConversationHistory();
         if (pathname === "/" || pathname === "/chats") {
           router.replace(`/chats/${response.conversation_id}`);
         }
@@ -158,6 +167,12 @@ export default function ChatWindow({ initialConversationId, initialMessages = []
     } finally {
       setCreatingChat(false);
     }
+  }
+
+  function upsertConversation(current: ConversationListItem[], item: ConversationListItem) {
+    const existing = current.find((conversation) => conversation.id === item.id);
+    const merged = existing ? { ...existing, ...item } : item;
+    return [merged, ...current.filter((conversation) => conversation.id !== item.id)];
   }
 
   return (

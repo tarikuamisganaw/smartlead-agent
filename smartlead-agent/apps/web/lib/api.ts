@@ -25,6 +25,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export const AUTH_ENABLED = process.env.NEXT_PUBLIC_AUTH_ENABLED === "true";
 const AUTH_TOKEN_KEY = "smartlead_access_token";
 const ANON_TOKEN_KEY = "smartlead_anonymous_session_token";
+let cachedMe: AuthMeResponse | null = null;
+let cachedMePromise: Promise<AuthMeResponse> | null = null;
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const authToken = getAccessToken();
@@ -41,13 +43,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    let detail = "";
+    let detail: unknown = "";
     try {
-      detail = JSON.stringify(await response.json());
+      detail = await response.json();
     } catch {
       detail = await response.text();
     }
-    throw new Error(`API request failed (${response.status}) ${detail}`.trim());
+    throw new Error(toUserFacingError(response.status, detail));
   }
 
   return response.json() as Promise<T>;
@@ -79,7 +81,31 @@ export function loginUser(payload: { email: string; password: string }) {
 }
 
 export function getMe() {
-  return request<AuthMeResponse>("/auth/me");
+  if (cachedMe) {
+    return Promise.resolve(cachedMe);
+  }
+  if (cachedMePromise) {
+    return cachedMePromise;
+  }
+  cachedMePromise = request<AuthMeResponse>("/auth/me")
+    .then((response) => {
+      cachedMe = response;
+      return response;
+    })
+    .finally(() => {
+      cachedMePromise = null;
+    });
+  return cachedMePromise;
+}
+
+export function refreshMe() {
+  cachedMe = null;
+  cachedMePromise = null;
+  return getMe();
+}
+
+export function hasCachedOwnerAccess() {
+  return Boolean(cachedMe?.memberships.some((membership) => membership.role === "owner"));
 }
 
 export function createAnonymousSession() {
@@ -201,10 +227,14 @@ export function getAccessToken() {
 }
 
 export function setAccessToken(token: string) {
+  cachedMe = null;
+  cachedMePromise = null;
   window.localStorage.setItem(AUTH_TOKEN_KEY, token);
 }
 
 export function clearAccessToken() {
+  cachedMe = null;
+  cachedMePromise = null;
   window.localStorage.removeItem(AUTH_TOKEN_KEY);
 }
 
@@ -217,6 +247,34 @@ export function getAnonymousSessionToken() {
 
 export function setAnonymousSessionToken(token: string) {
   window.localStorage.setItem(ANON_TOKEN_KEY, token);
+}
+
+function toUserFacingError(status: number, detail: unknown) {
+  const detailText = typeof detail === "string" ? detail : JSON.stringify(detail);
+  const lowered = detailText.toLowerCase();
+
+  if (lowered.includes("quota") || lowered.includes("rate limit") || lowered.includes("resource exhausted")) {
+    return "The AI service is temporarily at capacity. Please try again shortly.";
+  }
+  if (lowered.includes("api key") || lowered.includes("gemini") || lowered.includes("provider")) {
+    return "The assistant service is temporarily unavailable. Please try again shortly.";
+  }
+  if (status === 401) {
+    return "Please sign in to continue.";
+  }
+  if (status === 403) {
+    return "You do not have access to that area.";
+  }
+  if (status === 404) {
+    return "That item could not be found.";
+  }
+  if (status === 413) {
+    return "That upload is too large. Please use a smaller document.";
+  }
+  if (status >= 500) {
+    return "Something went wrong on our side. Please try again shortly.";
+  }
+  return "The request could not be completed. Please check your input and try again.";
 }
 
 export function clearAnonymousSessionToken() {

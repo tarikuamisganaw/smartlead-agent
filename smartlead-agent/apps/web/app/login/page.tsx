@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import ErrorState from "@/components/ErrorState";
-import { getMe, loginUser, setAccessToken } from "@/lib/api";
+import { refreshMe, loginUser, setAccessToken } from "@/lib/api";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -17,7 +17,7 @@ export default function LoginPage() {
     try {
       const response = await loginUser({ email, password });
       setAccessToken(response.access_token);
-      const me = await getMe();
+      const me = await refreshMe();
       const isOwner = me.memberships.some((membership) => membership.role === "owner");
       window.location.href = isOwner ? "/dashboard" : "/chats";
     } catch (caught) {
