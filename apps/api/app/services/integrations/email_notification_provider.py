@@ -1,8 +1,5 @@
-<<<<<<< HEAD
-=======
 import httpx
 
->>>>>>> eval-bakup
 from app.config import get_settings
 
 
@@ -15,25 +12,13 @@ class EmailNotificationProvider:
     def is_configured(self) -> bool:
         return bool(self.settings.resend_api_key and self.settings.owner_email and self.settings.from_email)
 
-<<<<<<< HEAD
-    def notify_owner(self, message: str, lead: dict | None = None, context: dict | None = None) -> dict:
-        return self._not_implemented()
-
-    def notify_approval_required(self, approval: dict, context: dict | None = None) -> dict:
-        return self._not_implemented()
-
-    def _not_implemented(self) -> dict:
-        return {
-            "status": "skipped",
-            "provider": self.provider_name,
-            "message": "Email notification provider is reserved for a later phase.",
-            "raw": {},
-        }
-=======
     def notify_owner_new_lead(self, lead: dict, context: dict | None = None) -> dict:
         if not self.is_configured():
             return _skipped()
-        subject = f"New SmartLead lead: {lead.get('lead_quality') or 'new'} lead for {lead.get('service_interest') or 'unknown service'}"
+        subject = (
+            f"New SmartLead lead: {lead.get('lead_quality') or 'new'} lead for "
+            f"{lead.get('service_interest') or 'unknown service'}"
+        )
         body = "\n".join(
             [
                 f"Hello {self.settings.owner_name},",
@@ -159,4 +144,3 @@ def _money(value: int | None) -> str:
     if value is None:
         return "Unknown"
     return f"${value}"
->>>>>>> eval-bakup

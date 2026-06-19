@@ -8,11 +8,7 @@ class MockLeadSyncProvider:
         return {
             "status": "mock_synced",
             "provider": self.provider_name,
-<<<<<<< HEAD
-            "external_id": None,
-=======
             "external_id": f"mock:{lead.get('id') or 'lead'}",
->>>>>>> eval-bakup
             "message": "Mock lead sync completed. No external service was called.",
             "raw": {},
         }

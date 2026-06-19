@@ -14,12 +14,7 @@ class LeadSyncProvider(Protocol):
 
 
 def get_lead_sync_provider() -> LeadSyncProvider:
-<<<<<<< HEAD
-    settings = get_settings()
-    provider = settings.lead_sync_provider.lower().strip()
-=======
     provider = get_settings().lead_sync_provider.lower().strip()
->>>>>>> eval-bakup
     if provider == "google_sheets":
         from app.services.integrations.google_sheets_provider import GoogleSheetsLeadSyncProvider
 

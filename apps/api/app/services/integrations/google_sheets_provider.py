@@ -44,21 +44,6 @@ class GoogleSheetsLeadSyncProvider:
             worksheet_name = self.settings.google_sheets_worksheet_name or "Leads"
             self._ensure_worksheet(service, spreadsheet_id, worksheet_name)
             self._ensure_header(service, spreadsheet_id, worksheet_name)
-<<<<<<< HEAD
-            row = _lead_row(lead)
-            response = (
-                service.spreadsheets()
-                .values()
-                .append(
-                    spreadsheetId=spreadsheet_id,
-                    range=f"{worksheet_name}!A:O",
-                    valueInputOption="USER_ENTERED",
-                    insertDataOption="INSERT_ROWS",
-                    body={"values": [row]},
-                )
-                .execute()
-            )
-=======
             if lead.get("external_sync_id"):
                 response = (
                     service.spreadsheets()
@@ -84,7 +69,6 @@ class GoogleSheetsLeadSyncProvider:
                     )
                     .execute()
                 )
->>>>>>> eval-bakup
             external_id = response.get("updates", {}).get("updatedRange") or response.get("tableRange")
             return {
                 "status": "synced",
@@ -116,12 +100,7 @@ class GoogleSheetsLeadSyncProvider:
 
     def _ensure_worksheet(self, service, spreadsheet_id: str, worksheet_name: str) -> None:
         spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-<<<<<<< HEAD
-        sheets = spreadsheet.get("sheets", [])
-        if any(sheet.get("properties", {}).get("title") == worksheet_name for sheet in sheets):
-=======
         if any(sheet.get("properties", {}).get("title") == worksheet_name for sheet in spreadsheet.get("sheets", [])):
->>>>>>> eval-bakup
             return
         service.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id,
@@ -135,12 +114,7 @@ class GoogleSheetsLeadSyncProvider:
             .get(spreadsheetId=spreadsheet_id, range=f"{worksheet_name}!A1:O1")
             .execute()
         )
-<<<<<<< HEAD
-        values = response.get("values", [])
-        if values:
-=======
         if response.get("values"):
->>>>>>> eval-bakup
             return
         service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,

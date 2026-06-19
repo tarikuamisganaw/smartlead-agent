@@ -9,36 +9,12 @@ class NotificationProvider(Protocol):
     def is_configured(self) -> bool:
         ...
 
-<<<<<<< HEAD
-    def notify_owner(self, message: str, lead: dict | None = None, context: dict | None = None) -> dict:
-=======
     def notify_owner_new_lead(self, lead: dict, context: dict | None = None) -> dict:
->>>>>>> eval-bakup
         ...
 
     def notify_approval_required(self, approval: dict, context: dict | None = None) -> dict:
         ...
 
-<<<<<<< HEAD
-
-def get_notification_provider() -> NotificationProvider:
-    settings = get_settings()
-    provider = settings.notification_provider.lower().strip()
-
-    if provider == "slack":
-        from app.services.integrations.slack_notification_provider import SlackNotificationProvider
-
-        return SlackNotificationProvider()
-
-    if provider == "email":
-        from app.services.integrations.email_notification_provider import EmailNotificationProvider
-
-        return EmailNotificationProvider()
-
-    from app.services.integrations.mock_notification_provider import MockNotificationProvider
-
-    return MockNotificationProvider()
-=======
     def notify_lead_sync_failure(self, lead: dict, error: str, context: dict | None = None) -> dict:
         ...
 
@@ -93,4 +69,3 @@ def _configured_provider_names() -> list[str]:
     if "mock" in names and len(names) > 1:
         return ["mock"]
     return names
->>>>>>> eval-bakup

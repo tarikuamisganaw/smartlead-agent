@@ -6,123 +6,6 @@ from httpx import ASGITransport, AsyncClient
 from app.config import get_settings
 from app.database import SessionLocal
 from app.main import app
-<<<<<<< HEAD
-from app.models import Lead, ToolCall
-
-
-async def _submit_lead(client: AsyncClient) -> dict:
-    response = await client.post(
-        "/chat",
-        json={"message": "I need SEO for my gym. My budget is $2000 and my email is sara@example.com."},
-    )
-    assert response.status_code == 200
-    return response.json()
-
-
-def _latest_lead() -> Lead:
-    db = SessionLocal()
-    try:
-        lead = db.query(Lead).order_by(Lead.created_at.desc()).first()
-        assert lead is not None
-        return lead
-    finally:
-        db.close()
-
-
-def _tool_names(agent_run_id: str) -> list[str]:
-    db = SessionLocal()
-    try:
-        return [
-            tool_call.tool_name
-            for tool_call in db.query(ToolCall).filter(ToolCall.agent_run_id == agent_run_id).all()
-        ]
-    finally:
-        db.close()
-
-
-@pytest.mark.anyio
-async def test_mock_lead_sync_default(monkeypatch) -> None:
-    monkeypatch.setenv("LEAD_SYNC_PROVIDER", "mock")
-    get_settings.cache_clear()
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        body = await _submit_lead(client)
-
-    lead = _latest_lead()
-
-    assert lead.external_sync_provider == "mock"
-    assert lead.external_sync_status == "synced"
-    assert "sync_lead_mock" in _tool_names(body["agent_run_id"])
-
-
-@pytest.mark.anyio
-async def test_google_sheets_provider_not_configured_fails_safely(monkeypatch) -> None:
-    monkeypatch.setenv("LEAD_SYNC_PROVIDER", "google_sheets")
-    monkeypatch.delenv("GOOGLE_SHEETS_CREDENTIALS_JSON", raising=False)
-    monkeypatch.delenv("GOOGLE_SHEETS_SPREADSHEET_ID", raising=False)
-    get_settings.cache_clear()
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        body = await _submit_lead(client)
-
-    lead = _latest_lead()
-
-    assert body["final_response"]
-    assert "google" not in body["final_response"].lower()
-    assert lead.external_sync_provider == "google_sheets"
-    assert lead.external_sync_status in {"failed", "not_configured"}
-    assert lead.external_sync_error
-    assert "sync_lead_google_sheets" in _tool_names(body["agent_run_id"])
-
-
-@pytest.mark.anyio
-async def test_manual_sync_endpoint_mock(monkeypatch) -> None:
-    monkeypatch.setenv("LEAD_SYNC_PROVIDER", "mock")
-    get_settings.cache_clear()
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        await _submit_lead(client)
-        lead = _latest_lead()
-        response = await client.post(f"/leads/{lead.id}/sync")
-
-    assert response.status_code == 200
-    assert response.json()["sync_result"]["status"] == "mock_synced"
-    assert response.json()["external_sync_status"] == "synced"
-
-
-@pytest.mark.anyio
-async def test_integrations_status_endpoint(monkeypatch) -> None:
-    monkeypatch.setenv("LEAD_SYNC_PROVIDER", "mock")
-    monkeypatch.setenv("GOOGLE_SHEETS_CREDENTIALS_JSON", '{"private_key":"secret"}')
-    get_settings.cache_clear()
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/integrations/status")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["lead_sync_provider"] == "mock"
-    assert "secret" not in str(body)
-
-
-@pytest.mark.anyio
-async def test_sync_requires_auth_header_when_auth_enabled(monkeypatch) -> None:
-    monkeypatch.setenv("AUTH_ENABLED", "true")
-    monkeypatch.setenv("LEAD_SYNC_PROVIDER", "mock")
-    get_settings.cache_clear()
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        await _submit_lead(client)
-        lead = _latest_lead()
-        guest = await client.post(f"/leads/{lead.id}/sync")
-        authenticated = await client.post(
-            f"/leads/{lead.id}/sync",
-            headers={"Authorization": "Bearer local-dev-owner"},
-        )
-
-    assert guest.status_code == 401
-    assert authenticated.status_code == 200
-=======
 from app.services.integrations.email_notification_provider import EmailNotificationProvider
 from app.services.integrations.slack_notification_provider import SlackNotificationProvider
 from app.services.lead_service import create_or_update_lead, sync_lead_external
@@ -256,37 +139,11 @@ async def test_sync_requires_owner_when_auth_enabled(monkeypatch) -> None:
 
     assert blocked.status_code == 401
     assert allowed.status_code == 200
->>>>>>> eval-bakup
 
 
 @pytest.mark.anyio
 async def test_sync_failure_does_not_fail_chat(monkeypatch) -> None:
     monkeypatch.setenv("LEAD_SYNC_PROVIDER", "google_sheets")
-<<<<<<< HEAD
-    monkeypatch.setenv("GOOGLE_SHEETS_CREDENTIALS_JSON", "{bad json")
-    monkeypatch.setenv("GOOGLE_SHEETS_SPREADSHEET_ID", "spreadsheet-id")
-    get_settings.cache_clear()
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        body = await _submit_lead(client)
-
-    lead = _latest_lead()
-
-    assert body["final_response"]
-    assert lead.external_sync_status == "failed"
-    assert lead.external_sync_error
-
-
-@pytest.mark.skipif(
-    not (os.getenv("GOOGLE_SHEETS_CREDENTIALS_JSON") and os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID")),
-    reason="Google Sheets credentials are not configured.",
-)
-def test_google_sheets_provider_if_env_exists() -> None:
-    from app.services.integrations.google_sheets_provider import GoogleSheetsLeadSyncProvider
-
-    provider = GoogleSheetsLeadSyncProvider()
-    assert provider.is_configured()
-=======
     monkeypatch.setenv("GOOGLE_SHEETS_CREDENTIALS_JSON", "")
     monkeypatch.setenv("GOOGLE_SHEETS_SPREADSHEET_ID", "")
     get_settings.cache_clear()
@@ -606,7 +463,10 @@ def test_email_notification_if_env_exists(monkeypatch) -> None:
     owner_email = os.environ.get("SMARTLEAD_TEST_OWNER_EMAIL")
     from_email = os.environ.get("SMARTLEAD_TEST_FROM_EMAIL")
     if not (api_key and owner_email and from_email):
-        pytest.skip("Set SMARTLEAD_TEST_RESEND_API_KEY, SMARTLEAD_TEST_OWNER_EMAIL, and SMARTLEAD_TEST_FROM_EMAIL to run the real email notification test.")
+        pytest.skip(
+            "Set SMARTLEAD_TEST_RESEND_API_KEY, SMARTLEAD_TEST_OWNER_EMAIL, and SMARTLEAD_TEST_FROM_EMAIL "
+            "to run the real email notification test."
+        )
 
     monkeypatch.setenv("RESEND_API_KEY", api_key)
     monkeypatch.setenv("OWNER_EMAIL", owner_email)
@@ -628,4 +488,3 @@ def test_email_notification_if_env_exists(monkeypatch) -> None:
     get_settings.cache_clear()
 
     assert result["status"] == "sent"
->>>>>>> eval-bakup
