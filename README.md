@@ -205,7 +205,11 @@ cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env.local
 ```
 
+## Deployment
 
+For a free portfolio deployment, use Supabase/Postgres for persistence, Hugging Face Spaces for the Dockerized FastAPI backend, and Vercel for the Next.js frontend.
+
+See [docs/free-deployment.md](docs/free-deployment.md) for the full step-by-step deployment guide.
 
 Optional production-style services:
 

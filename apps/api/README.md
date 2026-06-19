@@ -258,6 +258,12 @@ OWNER_NAME=Business Owner
 
 Email is optional and requires a verified sending domain or approved test sender. Customer follow-up emails are disabled by default.
 
+## Docker Deployment
+
+The repository root includes a Dockerfile for deploying this API as a stateless container. It copies `apps/api` and the demo `data` folder, installs Python dependencies, and starts Uvicorn on port `7860`.
+
+For the full free deployment path with Supabase, Hugging Face Spaces, and Vercel, see [../../docs/free-deployment.md](../../docs/free-deployment.md).
+
 ## Testing
 
 Run the backend test suite:
@@ -326,5 +332,4 @@ The script refuses production-style resets unless explicitly enabled, creates a 
 - Evals and performance diagnostics
 - Postgres-compatible database configuration
 - vector retrieval with local fallback
-
 
